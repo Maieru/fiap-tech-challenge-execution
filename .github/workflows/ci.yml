@@ -17,7 +17,9 @@ concurrency:
 jobs:
   verify:
     name: Build, coverage and distributed flow
-    runs-on: ubuntu-latest
+    # MongoDB 8 rejects kernels 6.19 through 7.0.13 (SERVER-121912).
+    # Ubuntu 22.04 currently provides kernel 6.8; revisit before runner retirement.
+    runs-on: ubuntu-22.04
     timeout-minutes: 40
     defaults:
       run:
@@ -34,6 +36,7 @@ jobs:
       - name: Pull integration dependencies
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
+          uname -r
           docker pull mongo:8.0@sha256:b9924c330a8bbc5800fe9c69f04a84e221eca7b28fd049a0354147d9908fa142
           docker pull apache/kafka:4.4.0@sha256:833b867a9585a141da455dc2b57431c65cbccb27f11c91f694444cca9f777e0f
       - name: Test and collect component coverage
@@ -86,6 +89,7 @@ jobs:
           dotnet test tests/FIAP.TechChallenge.Execution.Integration.Tests/FIAP.TechChallenge.Execution.Integration.Tests.csproj `
             --configuration Release --no-build --no-restore `
             --filter 'TestCategory=EndToEnd' `
+            --blame-hang-timeout 5m --blame-hang-dump-type none `
             --logger trx --results-directory artifacts/e2e
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4

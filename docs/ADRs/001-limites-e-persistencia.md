@@ -19,3 +19,5 @@ Compartilhar o banco do OS acoplaria implantação e transações entre serviço
 ## Consequências e evidências
 
 Duplicação transitória do domínio e casos de uso de catálogo está descrita em [reaproveitamento](../reaproveitamento.md). `MongoSession`, `MongoBootstrap` e repositórios implementam transação, índices e concorrência. Testes HTTP usam MongoDB real com replica set e verificam rollback, disputa por estoque e snapshots. O replica set de um nó é destinado ao ambiente local/CI; não oferece alta disponibilidade de produção.
+
+O primeiro CI revelou o bloqueio do MongoDB 8 em kernels 6.19 a 7.0.13 (SERVER-121912). O job de containers usa temporariamente Ubuntu 22.04/kernel 6.8 e deve migrar para runner com kernel corrigido antes de sua retirada em abril de 2027. O Compose conserva a mesma versão/digest; a compatibilidade de kernel está nos pré-requisitos de operação. Não se desabilita a proteção de inicialização do banco.

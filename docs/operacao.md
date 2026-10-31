@@ -4,6 +4,8 @@
 
 Requer Docker Linux, portas 8081, 8082, 5433 e 9092 disponíveis. Copie `.env.example` para `.env` em cada serviço e ajuste as credenciais. Use os mesmos `JWT_ISSUER`, `JWT_AUDIENCE` e `JWT_SIGNING_KEY` do emissor administrativo atual. A chave deve ter pelo menos 32 bytes. Os valores de exemplo servem apenas ao desenvolvimento. A senha MongoDB usada na URI deve estar percent-encoded se contiver caracteres reservados.
 
+MongoDB 8.0 recusa kernels Linux de 6.19 a 7.0.13 por incompatibilidade do TCMalloc ([notas oficiais](https://www.mongodb.com/pt-br/docs/manual/release-notes/8.0/)). Use kernel anterior a 6.19 ou 7.0.14+, inclusive na VM do Docker Desktop. O CI fixa `ubuntu-22.04` (kernel 6.8), mantém o bloqueio de segurança do MongoDB e não troca a versão do banco. Rever o runner antes da sua retirada em abril de 2027.
+
 Na raiz do Execution:
 
 ```powershell
