@@ -1,0 +1,13 @@
+**/bin/
+**/obj/
+.vs/
+.sonarqube/
+artifacts/
+TestResults/
+external/
+*.feature.cs
+*.trx
+*.user
+.env
+.env.*
+!.env.example

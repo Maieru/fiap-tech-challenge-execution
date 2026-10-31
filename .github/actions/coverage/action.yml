@@ -1,0 +1,32 @@
+name: Component coverage gate
+description: Merge coverage with ReportGenerator and enforce 80 percent for one component.
+inputs:
+  reports:
+    description: Cobertura input glob.
+    required: true
+  assemblies:
+    description: Assembly filters keeping this component isolated.
+    required: true
+  output:
+    description: Report output directory.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Install pinned coverage tool
+      shell: bash
+      run: dotnet tool install dotnet-reportgenerator-globaltool --version 5.5.12 --tool-path "$RUNNER_TEMP/reportgenerator"
+    - name: Generate report and enforce minimum
+      shell: bash
+      env:
+        COVERAGE_REPORTS: ${{ inputs.reports }}
+        COVERAGE_ASSEMBLIES: ${{ inputs.assemblies }}
+        COVERAGE_OUTPUT: ${{ inputs.output }}
+      run: |
+        "$RUNNER_TEMP/reportgenerator/reportgenerator" \
+          "-reports:$COVERAGE_REPORTS" "-targetdir:$COVERAGE_OUTPUT" \
+          '-reporttypes:JsonSummary;Cobertura;MarkdownSummaryGithub' \
+          "-assemblyfilters:$COVERAGE_ASSEMBLIES" \
+          '--minimumCoverageThresholds:lineCoverage=80'
+        jq -e '.summary.coverablelines > 0' "$COVERAGE_OUTPUT/Summary.json"
+        cat "$COVERAGE_OUTPUT/SummaryGithub.md" >> "$GITHUB_STEP_SUMMARY"

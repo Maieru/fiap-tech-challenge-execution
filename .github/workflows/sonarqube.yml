@@ -1,0 +1,108 @@
+name: SonarQube
+
+on:
+  workflow_call:
+    secrets:
+      SONAR_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and analyze
+    runs-on: windows-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      SONAR_ORGANIZATION: ${{ vars.SONAR_ORGANIZATION || 'maieru' }}
+      SONAR_PROJECT_KEY: ${{ vars.SONAR_PROJECT_KEY || 'Maieru_fiap-tech-challenge-execution' }}
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Set up JDK 21
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
+        with:
+          java-version: '21'
+          distribution: zulu
+      - name: Require Sonar token
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:SONAR_TOKEN)) {
+            throw 'Configure the SONAR_TOKEN repository secret as documented in docs/operacao.md.'
+          }
+      - name: Cache SonarQube Cloud packages
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ runner.temp }}\sonar\cache
+          key: ${{ runner.os }}-sonar-packages-${{ hashFiles('.config/dotnet-tools.json') }}
+          restore-keys: ${{ runner.os }}-sonar-packages-
+
+      - name: Cache SonarQube Cloud scanner
+        id: cache-sonar-scanner
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ runner.temp }}\scanner
+          key: ${{ runner.os }}-sonar-scanner-${{ hashFiles('.config/dotnet-tools.json') }}
+
+      - name: Install pinned SonarQube Cloud scanner
+        if: steps.cache-sonar-scanner.outputs.cache-hit != 'true'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          $manifest = Get-Content .config/dotnet-tools.json -Raw | ConvertFrom-Json
+          $version = $manifest.tools.'dotnet-sonarscanner'.version
+          dotnet tool install dotnet-sonarscanner --version $version --tool-path "$env:RUNNER_TEMP/scanner"
+
+      - name: Download component coverage
+        uses: actions/download-artifact@v4
+        with:
+          pattern: verification-*
+          path: artifacts/reports
+
+      - name: Map OpenCover source paths to Windows checkout
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $reports = @(Get-ChildItem artifacts/reports -Recurse -Filter coverage.opencover.xml)
+          if ($reports.Count -eq 0) { throw 'Component OpenCover reports are missing.' }
+          foreach ($report in $reports) {
+            [xml]$coverage = Get-Content -LiteralPath $report.FullName -Raw
+            foreach ($file in $coverage.SelectNodes('//File[@fullPath]')) {
+              $source = $file.GetAttribute('fullPath').Replace('\', '/')
+              $match = [regex]::Match($source, '(?:^|/)(src/.*)$')
+              if (-not $match.Success) { throw "Source path outside src: $source" }
+              $localPath = Join-Path $env:GITHUB_WORKSPACE $match.Groups[1].Value
+              if (-not (Test-Path -LiteralPath $localPath -PathType Leaf)) {
+                throw "Coverage source not found: $localPath"
+              }
+              $file.SetAttribute('fullPath', [IO.Path]::GetFullPath($localPath))
+            }
+            $coverage.Save($report.FullName)
+          }
+          Write-Host "Prepared $($reports.Count) OpenCover reports for the Windows checkout."
+
+      - name: Build and analyze
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_USER_HOME: ${{ runner.temp }}\sonar
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          $scanner = Join-Path $env:RUNNER_TEMP 'scanner/dotnet-sonarscanner.exe'
+          & $scanner begin "/k:$env:SONAR_PROJECT_KEY" "/o:$env:SONAR_ORGANIZATION" `
+            "/d:sonar.token=$env:SONAR_TOKEN" /d:sonar.host.url=https://sonarcloud.io `
+            /d:sonar.cs.opencover.reportsPaths=artifacts/reports/**/coverage.opencover.xml `
+            '/d:sonar.exclusions=**/Migrations/**,**/*.feature.cs,**/node_modules/**,**/bin/**,**/obj/**' `
+            /d:sonar.scanner.scanAll=false /d:sonar.qualitygate.wait=true
+          dotnet build Execution.slnx -c Release --no-incremental --disable-build-servers
+          & $scanner end "/d:sonar.token=$env:SONAR_TOKEN"

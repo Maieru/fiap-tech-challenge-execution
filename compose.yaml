@@ -1,0 +1,76 @@
+name: fiap-execution
+services:
+  mongo:
+    image: mongo:8.0@sha256:b9924c330a8bbc5800fe9c69f04a84e221eca7b28fd049a0354147d9908fa142
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: execution
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?Preencha MONGO_ROOT_PASSWORD}
+      MONGO_REPLICA_KEY: ${MONGO_REPLICA_KEY:?Preencha MONGO_REPLICA_KEY}
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        printf '%s' "$$MONGO_REPLICA_KEY" > /tmp/replica.key
+        chmod 400 /tmp/replica.key
+        chown mongodb:mongodb /tmp/replica.key
+        exec docker-entrypoint.sh mongod --replSet rs1 --keyFile /tmp/replica.key --bind_ip_all
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          mongosh --quiet --username "$$MONGO_INITDB_ROOT_USERNAME" --password "$$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin
+          --eval "try { rs.status() } catch(e) { rs.initiate({_id:'rs1', members:[{_id:0, host:'mongo:27017'}]}) }; if (!db.hello().isWritablePrimary) quit(1)"
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  kafka:
+    image: apache/kafka:4.4.0@sha256:833b867a9585a141da455dc2b57431c65cbccb27f11c91f694444cca9f777e0f
+    ports:
+      - "127.0.0.1:9092:9092"
+    environment:
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:19092,EXTERNAL://:9092,CONTROLLER://:19093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:19092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:19093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:19092 --list >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+  api:
+    build: .
+    ports:
+      - "127.0.0.1:8082:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: 8080
+      ConnectionStrings__MongoDB: mongodb://execution:${MONGO_ROOT_PASSWORD}@mongo:27017/?authSource=admin&replicaSet=rs1
+      MongoDB__Database: fiap_execution
+      Messaging__Enabled: "true"
+      Messaging__BootstrapServers: kafka:19092
+      Jwt__Issuer: ${JWT_ISSUER:?Preencha JWT_ISSUER}
+      Jwt__Audience: ${JWT_AUDIENCE:?Preencha JWT_AUDIENCE}
+      Jwt__SigningKey: ${JWT_SIGNING_KEY:?Preencha JWT_SIGNING_KEY}
+      Observability__EnableOtlp: ${EXECUTION_ENABLE_OTLP:-false}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://host.docker.internal:4317}
+    depends_on:
+      mongo: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+networks:
+  default:
+    name: fiap-oficina
+volumes:
+  mongo_data:
+  kafka_data:

@@ -1,0 +1,11 @@
+**/bin
+**/obj
+**/.git
+**/.vs
+**/.env
+**/.env.*
+!**/.env.example
+artifacts/
+external/
+**/TestResults
+**/.sonarqube

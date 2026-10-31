@@ -1,0 +1,105 @@
+name: Execution CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: execution-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Build, coverage and distributed flow
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Build
+        run: |
+          dotnet build Execution.slnx -c Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Test and collect component coverage
+        run: |
+          dotnet test Execution.slnx `
+            --configuration Release --no-build --no-restore `
+            --filter 'TestCategory!=EndToEnd' `
+            --settings coverage.runsettings `
+            --collect:'XPlat Code Coverage;Format=cobertura,opencover' `
+            --logger trx --results-directory artifacts/test-results
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: ./.github/actions/coverage
+        with:
+          reports: artifacts/test-results/**/coverage.cobertura.xml
+          assemblies: '+FIAP.TechChallenge.Execution.*;-*.Tests*'
+          output: artifacts/coverage
+      - name: Read compatible OS commit
+        id: os
+        run: |
+          $revision = (Get-Content .config/os-compatibility.json -Raw | ConvertFrom-Json).commit
+          if ($revision -notmatch '^[a-f0-9]{40}$') { throw 'Pin an immutable compatible OS commit.' }
+          "commit=$revision" >> $env:GITHUB_OUTPUT
+      - name: Checkout OS source at the pinned revision
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          repository: Maieru/fiap-tech-challenge
+          ref: ${{ steps.os.outputs.commit }}
+          path: external/os
+          persist-credentials: false
+      - name: Build both independent images and validate Compose
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          docker compose --env-file .env.example config --quiet
+          docker build -t fiap-execution:ci .
+          docker build -f external/os/src/Services/OrdensServico/Dockerfile -t fiap-os:ci external/os
+      - name: Distributed BDD with real JWT, databases and Kafka
+        env:
+          OS_TEST_IMAGE: fiap-os:ci
+          EXECUTION_TEST_IMAGE: fiap-execution:ci
+          E2E_ARTIFACTS_DIRECTORY: ${{ github.workspace }}/artifacts/contracts
+        run: |
+          dotnet test tests/FIAP.TechChallenge.Execution.Integration.Tests/FIAP.TechChallenge.Execution.Integration.Tests.csproj `
+            --configuration Release --no-build --no-restore `
+            --filter 'TestCategory=EndToEnd' `
+            --logger trx --results-directory artifacts/e2e
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verification-execution
+          path: |
+            artifacts/test-results/
+            artifacts/coverage/
+            artifacts/e2e/
+            artifacts/contracts/
+
+  quality:
+    name: SonarQube
+    needs: verify
+    uses: ./.github/workflows/sonarqube.yml
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  ci-required:
+    name: ci-required
+    if: always()
+    needs: [verify, quality]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all verification and quality checks
+        env:
+          VERIFY_RESULT: ${{ needs.verify.result }}
+          QUALITY_RESULT: ${{ needs.quality.result }}
+        run: test "$VERIFY_RESULT" = success && test "$QUALITY_RESULT" = success
