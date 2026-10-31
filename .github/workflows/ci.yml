@@ -31,15 +31,28 @@ jobs:
         run: |
           dotnet build Execution.slnx -c Release
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Pull integration dependencies
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          docker pull mongo:8.0@sha256:b9924c330a8bbc5800fe9c69f04a84e221eca7b28fd049a0354147d9908fa142
+          docker pull apache/kafka:4.4.0@sha256:833b867a9585a141da455dc2b57431c65cbccb27f11c91f694444cca9f777e0f
       - name: Test and collect component coverage
         run: |
           dotnet test Execution.slnx `
             --configuration Release --no-build --no-restore `
             --filter 'TestCategory!=EndToEnd' `
             --settings coverage.runsettings `
+            --blame-hang-timeout 2m --blame-hang-dump-type none `
             --collect:'XPlat Code Coverage;Format=cobertura,opencover' `
-            --logger trx --results-directory artifacts/test-results
+            --logger trx --logger 'console;verbosity=normal' --results-directory artifacts/test-results
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Container diagnostics on failure
+        if: failure()
+        run: |
+          docker ps -a
+          foreach ($container in @(docker ps -aq --filter label=org.testcontainers=true)) {
+            docker logs --tail 100 $container 2>&1
+          }
       - uses: ./.github/actions/coverage
         with:
           reports: artifacts/test-results/**/coverage.cobertura.xml

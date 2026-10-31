@@ -168,6 +168,7 @@ public sealed class ExecutionHost : IAsyncDisposable
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
+            Environment.SetEnvironmentVariable("Jwt__SigningKey", Key);
             builder.UseEnvironment("Testing");
             builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
             {

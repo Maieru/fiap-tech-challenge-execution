@@ -4,8 +4,8 @@ Validação local em 31/10/2026: Windows/PowerShell 7, .NET SDK 10.0.401 e Docke
 
 | Componente | Cenários aprovados | Cobertura de linhas |
 | --- | --- | --- |
-| Execution | 97 domínio + 45 aplicação + 36 integração | 96,1% (1407/1463) |
-| OS | 133 domínio + 57 aplicação + 43 integração | 90,7% (1602/1766) |
+| Execution | 97 domínio + 45 aplicação + 36 integração | 95,9% (1405/1465) |
+| OS | 133 domínio + 57 aplicação + 43 integração | 90,4% (1599/1767) |
 | Legado | 703, incluindo HTTP/PostgreSQL e BDD existentes | 95,4% (3500/3668) |
 | BDD distribuído | 2, com as duas imagens reais | Fora da medição por processo |
 | Imagem OS | 1, incluindo reinício e histórico após soft delete | Fora da medição por processo |
@@ -27,8 +27,8 @@ Cada serviço passa individualmente pelo gate de 80% do ReportGenerator 5.5.12. 
 
 Os comandos estão em [operação](operacao.md). Resultados locais, ignorados pelo Git:
 
-- Execution: `artifacts/verification/simplified`, `artifacts/coverage/acceptance`, `artifacts/e2e-acceptance`, `artifacts/contracts`.
-- Repositório OS: `artifacts/execution-migration/os-simplified`, `coverage-acceptance`, `legacy-final`, `legacy-coverage-final`, `os-image-acceptance`.
+- Execution: `artifacts/verification/quality`, `artifacts/coverage/quality`, `artifacts/e2e-quality`, `artifacts/contracts`.
+- Repositório OS: `artifacts/execution-migration/os-quality`, `coverage-quality`, `legacy-final`, `legacy-coverage-final`, `os-image-acceptance`.
 
 As duas imagens foram construídas com sucesso. Compose Execution e overlay OS subiram em rede e volumes próprios de validação; liveness/readiness de ambas as APIs retornaram 200. Somente os recursos descartáveis identificados pelo projeto de validação foram removidos; o monólito e os volumes existentes foram preservados. OpenAPI exportado contém 14 paths Execution e 9 OS.
 

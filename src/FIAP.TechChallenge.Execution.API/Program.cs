@@ -27,7 +27,8 @@ public partial class Program
         builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
         builder.Services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme).Configure<IConfiguration>((options, configuration) =>
         {
-            var issuer = configuration["Jwt:Issuer"]; var audience = configuration["Jwt:Audience"]; var key = configuration["Jwt:SigningKey"];
+            var issuer = configuration["Jwt:Issuer"]; var audience = configuration["Jwt:Audience"];
+            var key = Environment.GetEnvironmentVariable("Jwt__SigningKey");
             if (string.IsNullOrWhiteSpace(issuer) || string.IsNullOrWhiteSpace(audience) || string.IsNullOrWhiteSpace(key) || Encoding.UTF8.GetByteCount(key) < 32)
                 throw new InvalidOperationException("Configure Jwt:Issuer, Jwt:Audience e Jwt:SigningKey (minimo de 32 bytes).");
             options.MapInboundClaims = false;

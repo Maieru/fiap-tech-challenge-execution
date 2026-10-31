@@ -81,6 +81,8 @@ Proteja main com PR e check `ci-required`. O workflow deste repositório não pr
 
 ## Observabilidade
 
+A chave JWT é obtida exclusivamente da variável de ambiente `Jwt__SigningKey`, preenchida pelo Compose; issuer/audience continuam configuráveis. Os testes HTTP fornecem uma chave temporária no ambiente de seu próprio processo, mantendo a validação real da assinatura.
+
 Chassi fornece logs JSON, correlação, ProblemDetails, HTTP, liveness e readiness. `Fiap.TechChallenge.Messaging` fornece traces de publicação/consumo e instrumentos `messaging.outbox.pending`, `messaging.consumer_lag`, `messaging.retries`, `messaging.dead_letters`, `execution.stock.compensations`. O último conta cancelamentos compensados após commit; mensagens repetidas não incrementam. São métricas de processo, não um livro contábil durável. OTLP é opcional (`EXECUTION_ENABLE_OTLP`/`OS_ENABLE_OTLP`); New Relic não é obrigatório localmente.
 
 Kafka local usa PLAINTEXT e um broker; MongoDB um nó. A configuração de produção, ACLs/TLS, retenção/limpeza de Inbox/Outbox/idempotência e alta disponibilidade serão definidas com o deploy AWS, fora desta entrega.
