@@ -10,7 +10,7 @@ O serviço concentra diagnóstico e execução; clientes, veículos e decisões 
 Consulte a
 [arquitetura](https://github.com/Maieru/fiap-tech-challenge/blob/main/docs/arquitetura/execution.md),
 o [padrão de mensageria](https://github.com/Maieru/fiap-tech-challenge/blob/main/docs/arquitetura/mensageria.md)
-e as [evidências de validação](https://github.com/Maieru/fiap-tech-challenge/blob/main/docs/operacao/validacao-execution.md)
+e o [estado da migração](https://github.com/Maieru/fiap-tech-challenge/blob/main/docs/arquitetura/estado-da-migracao.md)
 no repositório principal.
 
 ## Dependências e restauração
@@ -19,22 +19,17 @@ Versões fixadas: Maieru.FiapTechChallenge.Chassis 1.1.1, Maieru.FiapTechChallen
 e FIAP.TechChallenge.OS.Application.Messaging 0.1.0. Os contratos locais do Execution usam ProjectReference dentro deste repositório.
 Não há referências de código-fonte nem acesso aos bancos de outros serviços.
 
-O contrato OS 0.1.0 ainda precisa ser publicado para build/CI em ambiente limpo.
-Até essa publicação, use o nupkg gerado no repositório principal:
+As dependências estão publicadas no NuGet. O restore padrão não exige preparação de pacotes locais:
 
 ```powershell
-# Na raiz do repositório principal, gere somente o contrato:
-dotnet pack src/Services/OrdensServico/FIAP.TechChallenge.OS.Application.Messaging -c Release -o artifacts/packages
-
-# Na raiz deste repositório:
-./scripts/Restore-Local.ps1 -OsMessagingPackage ../FiapTechChallengeFase1/artifacts/packages/FIAP.TechChallenge.OS.Application.Messaging.0.1.0.nupkg
+dotnet restore Execution.slnx
 dotnet build Execution.slnx -c Release --no-restore
 ```
 
-O roteiro apenas valida/copia o nupkg para artifacts/packages e gera configuração NuGet local ignorada pelo Git.
-Não compila outro repositório nem escolhe versões dinamicamente.
-Depois da publicação do contrato OS, dotnet restore funciona com NuGet.Config público, sem preparação local.
-O Dockerfile aceita os pacotes opcionais de artifacts/packages; uma imagem em ambiente limpo também exige o contrato publicado.
+Para testar um contrato OS gerado localmente, opcionalmente use `scripts/Restore-Local.ps1 -OsMessagingPackage <caminho-do-nupkg>`.
+O roteiro valida/copia o nupkg para artifacts/packages e gera configuração NuGet local ignorada pelo Git.
+Não compila outro repositório nem escolhe versões dinamicamente. O Dockerfile aceita esses pacotes opcionais;
+o build padrão e o CI restauram as versões publicadas pelo feed público.
 
 ## Executar com Compose
 
@@ -77,8 +72,7 @@ A conexão MongoDB precisa permitir transações. Coleções e índices são cri
 
 ## Executar as duas APIs e BDD
 
-Gere/restaure os contratos locais conforme os READMEs de cada repositório enquanto os dois pacotes 0.1.0 não estiverem públicos.
-Na raiz do repositório principal, construa a imagem OS:
+Na raiz do repositório principal, construa a imagem OS com as dependências públicas:
 
 ```powershell
 docker build -f src/Services/OrdensServico/Dockerfile -t fiap-os:local .
@@ -106,7 +100,7 @@ Não exige os Composes de desenvolvimento ligados nem referências a projetos da
 Os quatro cenários verificam conclusão, cancelamento/replay, decisões concorrentes e retomada do Execution,
 incluindo histórico, estoque, snapshots e correlação/causação/trace.
 O workflow manual distributed.yml aceita imagens publicadas acessíveis ao runner. Prefira referências por digest.
-Os pipelines locais de cada serviço continuam independentes. Os dois contratos precisam estar publicados para CI limpo.
+Os pipelines de cada serviço continuam independentes. O BDD distribuído fica separado da solução padrão e da sua validação automática.
 
 O padrão e as decisões da integração ficam no repositório principal:
 [ADR-016](https://github.com/Maieru/fiap-tech-challenge/blob/main/docs/ADRs/ADR-016-integracao-os-execution.md),
@@ -178,12 +172,11 @@ Preparação de catálogo ocorre por HTTP e ordens entram por Kafka. Os testes n
 CI tem build, testes, cobertura mínima de 80%, imagem, exportação OpenAPI e análise Sonar.
 Os jobs com MongoDB usam Ubuntu 22.04 para compatibilidade com o kernel do runner.
 O CI separa o download das imagens, registra a inicialização dos containers e limita esperas de startup/testes.
-Consulte o [diagnóstico de CI](https://github.com/Maieru/fiap-tech-challenge/blob/main/docs/operacao/diagnostico-ci-execution.md).
 Configure SONAR_TOKEN (secret) e SONAR_PROJECT_KEY (variable), organização maieru, no repositório Execution.
 Os resultados das verificações estão nas evidências de validação do repositório principal.
 
 ## Publicação dos contratos
 
-O pacote de contratos Execution.Application.Messaging usa a versão 0.1.0.
+O pacote de contratos Execution.Application.Messaging está publicado no NuGet na versão 0.1.0.
 O workflow publish-messaging.yml usa tag messaging-vX.Y.Z em commit revisado de main, variável NUGET_USER e NuGet Trusted Publishing.
 O pacote contém somente contratos, sem MongoDB/Kafka/domínio.
