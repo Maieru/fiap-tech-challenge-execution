@@ -172,6 +172,9 @@ NUnit/Moq nas unidades; HTTP com JWT, MongoDB replica set e Kafka reais via Test
 Preparação de catálogo ocorre por HTTP e ordens entram por Kafka. Os testes não usam os volumes de desenvolvimento.
 
 CI tem build, testes, cobertura mínima de 80%, imagem, exportação OpenAPI e análise Sonar.
+Os jobs com MongoDB usam Ubuntu 22.04 para compatibilidade com o kernel do runner.
+O CI separa o download das imagens, registra a inicialização dos containers e limita esperas de startup/testes.
+Consulte o [diagnóstico de CI](https://github.com/Maieru/fiap-tech-challenge/blob/main/docs/operacao/diagnostico-ci-execution.md).
 Configure SONAR_TOKEN (secret) e SONAR_PROJECT_KEY (variable), organização maieru, no repositório Execution.
 Os resultados das verificações estão nas evidências de validação do repositório principal.
 

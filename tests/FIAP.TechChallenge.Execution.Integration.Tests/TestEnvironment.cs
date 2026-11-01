@@ -1,4 +1,5 @@
 using System.IdentityModel.Tokens.Jwt;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -20,6 +21,7 @@ using Testcontainers.Kafka;
 using Testcontainers.MongoDb;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Networks;
+using DotNet.Testcontainers.Containers;
 
 namespace FIAP.TechChallenge.Execution.Integration.Tests;
 
@@ -36,13 +38,46 @@ public sealed class TestEnvironment
     [OneTimeSetUp]
     public async Task StartAsync()
     {
-        await Network.CreateAsync();
-        await Task.WhenAll(Mongo.StartAsync(), Kafka.StartAsync());
-        using var admin = Admin();
-        await admin.CreateTopicsAsync([new TopicSpecification
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+        TestContext.Progress.WriteLine($"[containers] Inicializando dependências; SO: {System.Runtime.InteropServices.RuntimeInformation.OSDescription}; limite: 3 minutos.");
+        try
         {
-            Name = Application.Messaging.ExecutionMessaging.Topic, NumPartitions = 1, ReplicationFactor = 1
-        }]);
+            await Network.CreateAsync(timeout.Token);
+            await Task.WhenAll(
+                StartContainerAsync("MongoDB replica set", Mongo, timeout.Token),
+                StartContainerAsync("Kafka", Kafka, timeout.Token)).WaitAsync(timeout.Token);
+            using var admin = Admin();
+            await admin.CreateTopicsAsync([new TopicSpecification
+            {
+                Name = Application.Messaging.ExecutionMessaging.Topic, NumPartitions = 1, ReplicationFactor = 1
+            }], new CreateTopicsOptions { OperationTimeout = TimeSpan.FromSeconds(10), RequestTimeout = TimeSpan.FromSeconds(15) });
+            TestContext.Progress.WriteLine("[containers] Dependências e tópico prontos; iniciando testes HTTP.");
+        }
+        catch (Exception exception)
+        {
+            await Task.WhenAll(PrintLogsAsync("MongoDB", Mongo), PrintLogsAsync("Kafka", Kafka));
+            if (timeout.IsCancellationRequested)
+                throw new TimeoutException("MongoDB/Kafka não inicializaram em 3 minutos. Consulte os logs dos containers acima.", exception);
+            throw;
+        }
+    }
+    private static async Task StartContainerAsync(string name, IContainer container, CancellationToken cancellationToken)
+    {
+        var elapsed = Stopwatch.StartNew();
+        TestContext.Progress.WriteLine($"[containers] Iniciando {name}...");
+        await container.StartAsync(cancellationToken);
+        TestContext.Progress.WriteLine($"[containers] {name} pronto em {elapsed.Elapsed.TotalSeconds:F1}s.");
+    }
+    private static async Task PrintLogsAsync(string name, IContainer container)
+    {
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var logs = await container.GetLogsAsync(ct: timeout.Token);
+            TestContext.Error.WriteLine($"[containers] {name}: {container.Id}, estado {container.State}");
+            TestContext.Error.WriteLine(string.Join('\n', (logs.Stdout + logs.Stderr).Split('\n').TakeLast(80)));
+        }
+        catch (Exception exception) { TestContext.Error.WriteLine($"[containers] Logs de {name} indisponíveis: {exception.Message}"); }
     }
     [OneTimeTearDown]
     public async Task StopAsync() { await Kafka.DisposeAsync(); await Mongo.DisposeAsync(); await Network.DisposeAsync(); }
