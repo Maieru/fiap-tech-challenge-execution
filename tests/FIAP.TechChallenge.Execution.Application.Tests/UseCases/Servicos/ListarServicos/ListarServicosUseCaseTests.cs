@@ -9,6 +9,7 @@ namespace FIAP.TechChallenge.Execution.Application.Tests.UseCases.Servicos.Lista
 [TestFixture]
 internal sealed class ListarServicosUseCaseTests
 {
+    private static readonly string[] ExpectedDescriptions = ["Alinhamento", "Balanceamento"];
     [Test]
     public async Task ExecuteAsync_ShouldFail_WhenPaginationIsInvalid()
     {
@@ -50,7 +51,7 @@ internal sealed class ListarServicosUseCaseTests
             Assert.That(result.Value.PageNumber, Is.EqualTo(1));
             Assert.That(result.Value.PageSize, Is.EqualTo(2));
             Assert.That(result.Value.Servicos, Has.Count.EqualTo(2));
-            Assert.That(result.Value.Servicos.Select(x => x.Descricao), Is.EqualTo(new[] { "Alinhamento", "Balanceamento" }));
+            Assert.That(result.Value.Servicos.Select(x => x.Descricao), Is.EqualTo(ExpectedDescriptions));
         });
 
         repositoryMock.Verify(x => x.GetPagedAsync(1, 2, It.IsAny<CancellationToken>()), Times.Once);

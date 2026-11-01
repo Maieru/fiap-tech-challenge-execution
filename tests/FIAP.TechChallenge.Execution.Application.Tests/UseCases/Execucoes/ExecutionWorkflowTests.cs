@@ -14,6 +14,9 @@ namespace FIAP.TechChallenge.Execution.Application.Tests.UseCases.Execucoes;
 
 public sealed class ExecutionWorkflowTests
 {
+    private static readonly string[] SaveFailureEvents = ["save", "dispose"];
+    private static readonly string[] PublishFailureEvents = ["save", "publish", "dispose"];
+    private static readonly string[] SuccessEvents = ["save", "publish", "commit", "dispose"];
     private static Execucao Order() => Execucao.Create(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "Motor falhando", DateTimeOffset.UtcNow).Value!;
 
     [TestCase("none")]
@@ -49,7 +52,7 @@ public sealed class ExecutionWorkflowTests
         if (failure != "none")
         {
             Assert.ThrowsAsync<IOException>(() => useCase.ExecuteAsync(new(order.OrdemServicoId)));
-            Assert.That(events, Is.EqualTo(failure == "save" ? new[] { "save", "dispose" } : new[] { "save", "publish", "dispose" }));
+            Assert.That(events, Is.EqualTo(failure == "save" ? SaveFailureEvents : PublishFailureEvents));
         }
         else
         {
@@ -57,7 +60,7 @@ public sealed class ExecutionWorkflowTests
             Assert.Multiple(() =>
             {
                 Assert.That(result.IsSuccess, Is.True);
-                Assert.That(events, Is.EqualTo(new[] { "save", "publish", "commit", "dispose" }));
+                Assert.That(events, Is.EqualTo(SuccessEvents));
             });
         }
     }

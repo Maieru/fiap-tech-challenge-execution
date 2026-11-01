@@ -61,6 +61,9 @@ docker compose up --build -d
 O Compose inicializa MongoDB como replica set de um nó e cria os dois tópicos, com uma partição.
 MongoDB local não exige credenciais e Kafka usa PLAINTEXT; ambos são expostos somente em loopback neste ambiente de desenvolvimento.
 JWT é exigido nos endpoints administrativos e validado sem chamar o legado.
+A configuração JWT usa a seção Jwt de IConfiguration, com chave de pelo menos 32 bytes UTF-8.
+A chave simétrica é registrada uma única vez na DI e injetada na validação JWT.
+No Compose, JWT_SIGNING_KEY do .env é mapeada para Jwt__SigningKey. Provisione segredos externamente; não versione a chave.
 OpenAPI/Scalar são habilitados somente em Development/Testing. OTLP é opcional.
 
 Os volumes fiap-execution_execution_mongo_data e fiap-execution_execution_kafka_data pertencem a este ambiente.

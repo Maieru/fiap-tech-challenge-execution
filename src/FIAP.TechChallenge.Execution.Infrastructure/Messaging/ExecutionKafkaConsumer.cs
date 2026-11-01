@@ -112,8 +112,11 @@ public sealed class ExecutionKafkaConsumer(IConfiguration configuration, IServic
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
         catch (Exception exception)
         {
-            logger.LogCritical(exception, "Consumo interrompido sem avançar o offset pendente. Tópico {Topic}, partição {Partition}, offset {Offset}, mensagem {MessageId}, correlação {CorrelationId}. Corrija a causa e reinicie.",
-                record?.Topic, record?.Partition.Value, record?.Offset.Value, pendingMessageId, pendingCorrelationId);
+            if (logger.IsEnabled(LogLevel.Critical))
+            {
+                logger.LogCritical(exception, "Consumo interrompido sem avançar o offset pendente. Tópico {Topic}, partição {Partition}, offset {Offset}, mensagem {MessageId}, correlação {CorrelationId}. Corrija a causa e reinicie.",
+                    record?.Topic, record?.Partition.Value, record?.Offset.Value, pendingMessageId, pendingCorrelationId);
+            }
             Environment.ExitCode = 1;
             throw;
         }

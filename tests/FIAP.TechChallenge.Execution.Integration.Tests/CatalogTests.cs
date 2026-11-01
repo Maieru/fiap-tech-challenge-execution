@@ -89,6 +89,33 @@ public sealed class CatalogTests : IntegrationTest
         _ = await ReadAsync(delete, HttpStatusCode.NotFound);
     }
 
+    [TestCase("signature")]
+    [TestCase("expiration")]
+    [TestCase("issuer")]
+    public async Task Authentication_ShouldRejectInvalidSignedTokens(string invalidField)
+    {
+        var token = invalidField switch
+        {
+            "signature" => ExecutionFactory.Token(signingKey: Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32))),
+            "expiration" => ExecutionFactory.Token(expired: true),
+            _ => ExecutionFactory.Token(issuer: "another-issuer")
+        };
+        Client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        using var response = await Client.GetAsync($"{Prefix}/servicos");
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.Unauthorized));
+    }
+
+    [TestCase(null)]
+    [TestCase("")]
+    [TestCase("too-short")]
+    public async Task Authentication_ShouldRejectMissingOrWeakConfigurationKey(string? key)
+    {
+        await using var invalid = new ExecutionFactory($"{DatabaseName}_invalid", InputTopic, $"{GroupId}-invalid")
+        { ConfiguredSigningKey = key };
+        Assert.That(() => { using var client = invalid.CreateClient(); },
+            Throws.TypeOf<InvalidOperationException>().With.Message.Contains("Jwt:SigningKey"));
+    }
+
     [Test]
     public async Task AuthenticationAndHealth_ShouldUseRealJwtAndPublicHealth()
     {

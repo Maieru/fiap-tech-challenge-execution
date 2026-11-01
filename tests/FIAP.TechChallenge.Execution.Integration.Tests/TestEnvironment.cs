@@ -1,5 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Diagnostics;
+using System.Security.Cryptography;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -87,7 +88,8 @@ public sealed class TestEnvironment
 
 public sealed class ExecutionFactory(string databaseName, string inputTopic, string groupId, int timeoutMs = 10000) : WebApplicationFactory<Program>
 {
-    public const string SigningKey = "execution-integration-tests-key-at-least-32-bytes";
+    public static readonly string SigningKey = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+    public string? ConfiguredSigningKey { get; init; } = SigningKey;
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -99,12 +101,13 @@ public sealed class ExecutionFactory(string databaseName, string inputTopic, str
             ["Kafka:InputTopic"] = inputTopic, ["Kafka:GroupId"] = groupId,
             ["Kafka:MessageTimeoutMs"] = timeoutMs.ToString(),
             ["Logging:LogLevel:Default"] = "Warning",
-            ["Jwt:Issuer"] = "execution-tests", ["Jwt:Audience"] = "execution-tests", ["Jwt:SigningKey"] = SigningKey
+            ["Jwt:Issuer"] = "execution-tests", ["Jwt:Audience"] = "execution-tests", ["Jwt:SigningKey"] = ConfiguredSigningKey
         }));
     }
-    public static string Token() => new JwtSecurityTokenHandler().WriteToken(new JwtSecurityToken(
-        issuer: "execution-tests", audience: "execution-tests", expires: DateTime.UtcNow.AddMinutes(15),
-        signingCredentials: new SigningCredentials(new SymmetricSecurityKey(Encoding.UTF8.GetBytes(SigningKey)), SecurityAlgorithms.HmacSha256)));
+    public static string Token(bool expired = false, string issuer = "execution-tests", string? signingKey = null) =>
+        new JwtSecurityTokenHandler().WriteToken(new JwtSecurityToken(
+            issuer: issuer, audience: "execution-tests", expires: DateTime.UtcNow.AddMinutes(expired ? -15 : 15),
+            signingCredentials: new SigningCredentials(new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey ?? SigningKey)), SecurityAlgorithms.HmacSha256)));
 }
 
 [NonParallelizable]
@@ -181,7 +184,7 @@ public abstract class IntegrationTest
         }
     }
 
-    protected async Task<JsonElement> ReadAsync(HttpResponseMessage response, HttpStatusCode expected = HttpStatusCode.OK)
+    protected static async Task<JsonElement> ReadAsync(HttpResponseMessage response, HttpStatusCode expected = HttpStatusCode.OK)
     {
         var body = await response.Content.ReadAsStringAsync();
         Assert.That(response.StatusCode, Is.EqualTo(expected), body);
@@ -210,7 +213,7 @@ public abstract class IntegrationTest
     protected async Task<int> StockAsync(Guid id) =>
         (await Client.GetFromJsonAsync<JsonElement>($"{Prefix}/pecas-insumos/{id}", Json)).GetProperty("quantidadeEstoque").GetInt32();
 
-    protected MessageEnvelope<JsonElement> ReadEvent(Guid id, string type)
+    protected static MessageEnvelope<JsonElement> ReadEvent(Guid id, string type)
     {
         using var consumer = new ConsumerBuilder<string, string>(new ConsumerConfig
         {
