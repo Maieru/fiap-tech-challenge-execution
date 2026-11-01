@@ -1,0 +1,44 @@
+name: Execution SonarQube
+on:
+  workflow_call:
+    secrets:
+      SONAR_TOKEN:
+        required: true
+permissions:
+  contents: read
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_PROJECT_KEY: ${{ vars.SONAR_PROJECT_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '21'
+      - uses: actions/download-artifact@v4
+        with:
+          name: execution-verification
+          path: artifacts/reports
+      - name: Require configuration
+        shell: bash
+        run: |
+          test -n "$SONAR_TOKEN"
+          test -n "$SONAR_PROJECT_KEY"
+      - run: dotnet tool restore
+      - name: Begin analysis
+        run: >-
+          dotnet sonarscanner begin /k:"$SONAR_PROJECT_KEY" /o:maieru
+          /d:sonar.token="$SONAR_TOKEN" /d:sonar.host.url=https://sonarcloud.io
+          /d:sonar.cs.opencover.reportsPaths=artifacts/reports/**/coverage.opencover.xml
+          /d:sonar.scanner.scanAll=false /d:sonar.qualitygate.wait=true
+      - run: dotnet build Execution.slnx -c Release --no-incremental
+      - run: dotnet sonarscanner end /d:sonar.token="$SONAR_TOKEN"

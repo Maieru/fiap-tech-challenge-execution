@@ -1,0 +1,54 @@
+name: Publish execution-messaging
+on:
+  push:
+    tags: ['messaging-v*']
+permissions:
+  contents: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      NUGET_USER: ${{ vars.NUGET_USER }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Validate release
+        shell: bash
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^messaging-v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "::error::Expected messaging-vX.Y.Z"
+            exit 1
+          fi
+          echo "PACKAGE_VERSION=${BASH_REMATCH[1]}" >> "$GITHUB_ENV"
+          git merge-base --is-ancestor HEAD origin/main
+          if [[ -z "${NUGET_USER//[[:space:]]/}" ]]; then
+            echo "::error::Configure the NUGET_USER repository variable."
+            exit 1
+          fi
+      - name: Test contracts and publisher
+        run: |
+          dotnet restore tests/FIAP.TechChallenge.Execution.Application.Messaging.Tests
+          dotnet test tests/FIAP.TechChallenge.Execution.Application.Messaging.Tests -c Release --no-restore --filter 'TestCategory!=Kafka'
+      - name: Pack immutable release
+        run: dotnet pack src/FIAP.TechChallenge.Execution.Application.Messaging -c Release -o artifacts/packages -p:Version="$PACKAGE_VERSION"
+      - uses: NuGet/login@v1
+        id: login
+        with:
+          user: ${{ env.NUGET_USER }}
+      - name: Publish
+        env:
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
+        run: dotnet nuget push "artifacts/packages/*.nupkg" --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: execution-messaging-release
+          path: artifacts/packages/*

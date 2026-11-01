@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../FIAP.TechChallenge.Execution.Application/FIAP.TechChallenge.Execution.Application.csproj" />
+    <PackageReference Include="MongoDB.Driver" Version="3.13.0" />
+    <PackageReference Include="Maieru.FiapTechChallenge.Messaging.Kafka" Version="0.1.1" />
+    <PackageReference Include="FIAP.TechChallenge.OS.Application.Messaging" Version="0.1.0" />
+
+  </ItemGroup>
+</Project>

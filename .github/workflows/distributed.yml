@@ -1,0 +1,39 @@
+name: Distributed OS and Execution BDD
+on:
+  workflow_dispatch:
+    inputs:
+      os-image:
+        description: Published immutable OS image reference
+        required: true
+        type: string
+      execution-image:
+        description: Published immutable Execution image reference
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  bdd:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    env:
+      TESTCONTAINERS_WAIT_STRATEGY_TIMEOUT: '00:02:00'
+      OS_TEST_IMAGE: ${{ inputs.os-image }}
+      EXECUTION_TEST_IMAGE: ${{ inputs.execution-image }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Fetch service images
+        run: |
+          docker pull "$OS_TEST_IMAGE"
+          docker pull "$EXECUTION_TEST_IMAGE"
+      - name: Test both services through HTTP and Kafka
+        timeout-minutes: 10
+        run: dotnet test Distributed.slnx -c Release --logger 'console;verbosity=normal' --logger trx --blame-hang-timeout 3m --results-directory artifacts/distributed
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: distributed-bdd
+          path: artifacts/distributed/

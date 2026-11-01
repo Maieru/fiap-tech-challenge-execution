@@ -1,0 +1,90 @@
+name: fiap-execution
+services:
+  mongo:
+    image: mongo:8.0
+    command: ["mongod", "--replSet", "execution-rs", "--bind_ip_all"]
+    ports:
+      - "127.0.0.1:27018:27017"
+    volumes:
+      - execution_mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "quit(db.hello().isWritablePrimary ? 0 : 1)"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  mongo-init:
+    image: mongo:8.0
+    depends_on:
+      mongo:
+        condition: service_started
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        until mongosh --host mongo:27017 --quiet --eval 'db.adminCommand({ping: 1})' > /dev/null 2>&1; do sleep 1; done
+        mongosh --host mongo:27017 --quiet --eval 'try { rs.status() } catch (e) { rs.initiate({_id: "execution-rs", members: [{_id: 0, host: "mongo:27017"}]}) }'
+        until mongosh --host mongo:27017 --quiet --eval 'quit(db.hello().isWritablePrimary ? 0 : 1)' > /dev/null 2>&1; do sleep 1; done
+    restart: "no"
+  kafka:
+    image: apache/kafka:4.1.0
+    hostname: kafka
+    ports:
+      - "127.0.0.1:19093:9094"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://:9092,EXTERNAL://:9094,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://127.0.0.1:19093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    volumes:
+      - execution_kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+  kafka-init:
+    image: apache/kafka:4.1.0
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic oficina.os.events.v1 --partitions 1 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic oficina.execution.events.v1 --partitions 1 --replication-factor 1
+    restart: "no"
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:8082:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      Mongo__ConnectionString: mongodb://mongo:27017/?replicaSet=execution-rs
+      Mongo__DatabaseName: fiap_execution
+      Kafka__BootstrapServers: kafka:9092
+      Jwt__Issuer: ${JWT_ISSUER:?Preencha JWT_ISSUER igual ao emissor administrativo}
+      Jwt__Audience: ${JWT_AUDIENCE:?Preencha JWT_AUDIENCE igual ao emissor administrativo}
+      Jwt__SigningKey: ${JWT_SIGNING_KEY:?Preencha JWT_SIGNING_KEY com pelo menos 32 bytes}
+      Observability__EnableOtlp: ${EXECUTION_ENABLE_OTLP:-false}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://host.docker.internal:4317}
+    depends_on:
+      mongo:
+        condition: service_healthy
+      mongo-init:
+        condition: service_completed_successfully
+      kafka-init:
+        condition: service_completed_successfully
+    restart: "no"
+volumes:
+  execution_mongo_data:
+  execution_kafka_data:

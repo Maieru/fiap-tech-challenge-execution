@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../FIAP.TechChallenge.Execution.Application/FIAP.TechChallenge.Execution.Application.csproj" />
+    <ProjectReference Include="../FIAP.TechChallenge.Execution.Infrastructure/FIAP.TechChallenge.Execution.Infrastructure.csproj" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.6" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.6" />
+    <PackageReference Include="Microsoft.OpenApi" Version="2.7.5" />
+    <PackageReference Include="Scalar.AspNetCore" Version="2.13.22" />
+
+  </ItemGroup>
+</Project>
