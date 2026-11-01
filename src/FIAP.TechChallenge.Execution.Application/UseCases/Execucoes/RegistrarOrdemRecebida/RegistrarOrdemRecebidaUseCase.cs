@@ -6,11 +6,6 @@ using FIAP.TechChallenge.Execution.Domain.Interfaces;
 
 namespace FIAP.TechChallenge.Execution.Application.UseCases.Execucoes.RegistrarOrdemRecebida;
 
-public sealed record RegistrarOrdemRecebidaCommand(Guid OrdemServicoId, Guid ClienteId, Guid VeiculoId, string DescricaoProblema);
-public interface IRegistrarOrdemRecebidaUseCase
-{
-    Task<Result<bool>> ExecuteAsync(RegistrarOrdemRecebidaCommand command, CancellationToken cancellationToken = default);
-}
 public sealed class RegistrarOrdemRecebidaUseCase(IExecucaoRepository repository, IUnitOfWork unitOfWork,
     IProcessedMessageRepository processed, MessageContext context, TimeProvider clock) : IRegistrarOrdemRecebidaUseCase
 {

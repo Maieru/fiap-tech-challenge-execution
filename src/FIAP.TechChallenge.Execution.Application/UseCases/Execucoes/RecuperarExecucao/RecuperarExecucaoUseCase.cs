@@ -3,11 +3,6 @@ using FIAP.TechChallenge.Execution.Domain.Interfaces;
 
 namespace FIAP.TechChallenge.Execution.Application.UseCases.Execucoes.RecuperarExecucao;
 
-public sealed record RecuperarExecucaoCommand(Guid OrdemServicoId);
-public interface IRecuperarExecucaoUseCase
-{
-    Task<Result<ExecucaoResponse>> ExecuteAsync(RecuperarExecucaoCommand command, CancellationToken cancellationToken = default);
-}
 public sealed class RecuperarExecucaoUseCase(IExecucaoRepository repository) : IRecuperarExecucaoUseCase
 {
     public async Task<Result<ExecucaoResponse>> ExecuteAsync(RecuperarExecucaoCommand command, CancellationToken cancellationToken = default)

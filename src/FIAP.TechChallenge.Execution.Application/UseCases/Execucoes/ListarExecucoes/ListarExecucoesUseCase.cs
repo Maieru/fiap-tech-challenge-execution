@@ -1,15 +1,8 @@
 using FIAP.TechChallenge.Execution.Domain.Abstractions;
-using FIAP.TechChallenge.Execution.Domain.Entities;
 using FIAP.TechChallenge.Execution.Domain.Interfaces;
 
 namespace FIAP.TechChallenge.Execution.Application.UseCases.Execucoes.ListarExecucoes;
 
-public sealed record ListarExecucoesCommand(StatusExecucao? Status = null, int PageNumber = 1, int PageSize = 10);
-public sealed record ListarExecucoesResponse(IReadOnlyList<ExecucaoResponse> Items, long TotalItems, int PageNumber, int PageSize);
-public interface IListarExecucoesUseCase
-{
-    Task<Result<ListarExecucoesResponse>> ExecuteAsync(ListarExecucoesCommand command, CancellationToken cancellationToken = default);
-}
 public sealed class ListarExecucoesUseCase(IExecucaoRepository repository) : IListarExecucoesUseCase
 {
     public async Task<Result<ListarExecucoesResponse>> ExecuteAsync(ListarExecucoesCommand command, CancellationToken cancellationToken = default)

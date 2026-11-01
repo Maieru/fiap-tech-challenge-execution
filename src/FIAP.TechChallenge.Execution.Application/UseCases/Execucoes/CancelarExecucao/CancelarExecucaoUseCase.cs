@@ -7,11 +7,6 @@ using Maieru.FiapTechChallenge.Chassis;
 
 namespace FIAP.TechChallenge.Execution.Application.UseCases.Execucoes.CancelarExecucao;
 
-public sealed record CancelarExecucaoCommand(Guid OrdemServicoId);
-public interface ICancelarExecucaoUseCase
-{
-    Task<Result<bool>> ExecuteAsync(CancelarExecucaoCommand command, CancellationToken cancellationToken = default);
-}
 public sealed class CancelarExecucaoUseCase(IExecucaoRepository repository, IUnitOfWork unitOfWork,
     IProcessedMessageRepository processed, IMessagingService messaging, MessageContext context,
     IPecaInsumoRepository parts, TimeProvider clock) : ICancelarExecucaoUseCase
