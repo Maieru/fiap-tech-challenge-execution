@@ -10,10 +10,9 @@ public static class AuthenticationDependencyInjection
     {
         _ = services.AddSingleton(provider =>
         {
-            var jwtSection = provider.GetRequiredService<IConfiguration>().GetSection("Jwt");
-            var signingKey = jwtSection["SigningKey"];
+            var signingKey = Environment.GetEnvironmentVariable("Jwt__SigningKey");
             if (string.IsNullOrWhiteSpace(signingKey) || Encoding.UTF8.GetByteCount(signingKey) < 32)
-                throw new InvalidOperationException("Configure Jwt:SigningKey (mínimo de 32 bytes).");
+                throw new InvalidOperationException("Configure a variável Jwt__SigningKey (mínimo de 32 bytes).");
 
             return new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey));
         });

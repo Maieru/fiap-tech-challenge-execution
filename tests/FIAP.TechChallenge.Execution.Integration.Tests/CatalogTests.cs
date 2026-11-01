@@ -108,12 +108,17 @@ public sealed class CatalogTests : IntegrationTest
     [TestCase(null)]
     [TestCase("")]
     [TestCase("too-short")]
-    public async Task Authentication_ShouldRejectMissingOrWeakConfigurationKey(string? key)
+    public async Task Authentication_ShouldRejectMissingOrWeakEnvironmentKey(string? key)
     {
-        await using var invalid = new ExecutionFactory($"{DatabaseName}_invalid", InputTopic, $"{GroupId}-invalid")
-        { ConfiguredSigningKey = key };
-        Assert.That(() => { using var client = invalid.CreateClient(); },
-            Throws.TypeOf<InvalidOperationException>().With.Message.Contains("Jwt:SigningKey"));
+        var previous = Environment.GetEnvironmentVariable("Jwt__SigningKey");
+        try
+        {
+            Environment.SetEnvironmentVariable("Jwt__SigningKey", key);
+            await using var invalid = new ExecutionFactory($"{DatabaseName}_invalid", InputTopic, $"{GroupId}-invalid");
+            Assert.That(() => { using var client = invalid.CreateClient(); },
+                Throws.TypeOf<InvalidOperationException>().With.Message.Contains("Jwt__SigningKey"));
+        }
+        finally { Environment.SetEnvironmentVariable("Jwt__SigningKey", previous); }
     }
 
     [Test]

@@ -29,6 +29,7 @@ namespace FIAP.TechChallenge.Execution.Integration.Tests;
 [SetUpFixture]
 public sealed class TestEnvironment
 {
+    private string? previousSigningKey;
     public static readonly INetwork Network = new NetworkBuilder().WithName($"execution-tests-{Guid.NewGuid():N}").Build();
     public static readonly MongoDbContainer Mongo = new MongoDbBuilder("mongo:8.0")
         .WithNetwork(Network).WithNetworkAliases("mongo").WithReplicaSet("execution-tests").Build();
@@ -43,6 +44,8 @@ public sealed class TestEnvironment
         TestContext.Progress.WriteLine($"[containers] Inicializando dependências; SO: {System.Runtime.InteropServices.RuntimeInformation.OSDescription}; limite: 3 minutos.");
         try
         {
+            previousSigningKey = Environment.GetEnvironmentVariable("Jwt__SigningKey");
+            Environment.SetEnvironmentVariable("Jwt__SigningKey", ExecutionFactory.SigningKey);
             await Network.CreateAsync(timeout.Token);
             await Task.WhenAll(
                 StartContainerAsync("MongoDB replica set", Mongo, timeout.Token),
@@ -56,6 +59,7 @@ public sealed class TestEnvironment
         }
         catch (Exception exception)
         {
+            Environment.SetEnvironmentVariable("Jwt__SigningKey", previousSigningKey);
             await Task.WhenAll(PrintLogsAsync("MongoDB", Mongo), PrintLogsAsync("Kafka", Kafka));
             if (timeout.IsCancellationRequested)
                 throw new TimeoutException("MongoDB/Kafka não inicializaram em 3 minutos. Consulte os logs dos containers acima.", exception);
@@ -81,7 +85,11 @@ public sealed class TestEnvironment
         catch (Exception exception) { TestContext.Error.WriteLine($"[containers] Logs de {name} indisponíveis: {exception.Message}"); }
     }
     [OneTimeTearDown]
-    public async Task StopAsync() { await Kafka.DisposeAsync(); await Mongo.DisposeAsync(); await Network.DisposeAsync(); }
+    public async Task StopAsync()
+    {
+        try { await Kafka.DisposeAsync(); await Mongo.DisposeAsync(); await Network.DisposeAsync(); }
+        finally { Environment.SetEnvironmentVariable("Jwt__SigningKey", previousSigningKey); }
+    }
     public static IAdminClient Admin() => new AdminClientBuilder(new AdminClientConfig
     { BootstrapServers = Kafka.GetBootstrapAddress(), BrokerAddressFamily = BrokerAddressFamily.V4 }).Build();
 }
@@ -89,7 +97,6 @@ public sealed class TestEnvironment
 public sealed class ExecutionFactory(string databaseName, string inputTopic, string groupId, int timeoutMs = 10000) : WebApplicationFactory<Program>
 {
     public static readonly string SigningKey = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
-    public string? ConfiguredSigningKey { get; init; } = SigningKey;
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -101,7 +108,7 @@ public sealed class ExecutionFactory(string databaseName, string inputTopic, str
             ["Kafka:InputTopic"] = inputTopic, ["Kafka:GroupId"] = groupId,
             ["Kafka:MessageTimeoutMs"] = timeoutMs.ToString(),
             ["Logging:LogLevel:Default"] = "Warning",
-            ["Jwt:Issuer"] = "execution-tests", ["Jwt:Audience"] = "execution-tests", ["Jwt:SigningKey"] = ConfiguredSigningKey
+            ["Jwt:Issuer"] = "execution-tests", ["Jwt:Audience"] = "execution-tests"
         }));
     }
     public static string Token(bool expired = false, string issuer = "execution-tests", string? signingKey = null) =>
