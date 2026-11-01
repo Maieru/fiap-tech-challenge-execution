@@ -1,0 +1,15 @@
+**/bin/
+**/obj/
+.vs/
+.vscode/
+.sonarqube/
+artifacts/
+TestResults/
+*.user
+*.suo
+*.trx
+*.nupkg
+*.snupkg
+.env
+.env.*
+!.env.example
