@@ -8,6 +8,7 @@ TestResults/
 *.user
 *.suo
 *.trx
+**/*.feature.cs
 *.nupkg
 *.snupkg
 .env

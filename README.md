@@ -2,22 +2,16 @@
 
 Serviço independente de diagnóstico, catálogo, estoque e execução, em .NET 10 com MongoDB próprio e Kafka.
 
-## Estado da entrega
-
-| Etapa | Conteúdo | Estado |
-| --- | --- | --- |
-| 1 | Contratos NuGet, interface e padrão comum | Revisada |
-| 2 | API, domínio, MongoDB, catálogo, estoque e consumidor Execution | Implementada para revisão |
-| 3 | Publicação/recepção no OS, aprovação administrativa e BDD distribuído | Pendente |
-
 O Execution recebe OrdemServicoCriada, ExecucaoAutorizada e CancelamentoSolicitado por Kafka.
-A API OS ainda não publica nem consome esses eventos. Os testes desta etapa produzem as mensagens pelo contrato público,
-sem exigir o OS em execução. Billing, pagamentos, frontend, migração de dados e AWS ficam para depois.
+A API OS publica essas entradas e recebe as cinco confirmações do Execution. Os testes isolados produzem
+mensagens pelo contrato público; Distributed.slnx verifica as duas imagens reais juntas.
+O serviço concentra diagnóstico e execução; clientes, veículos e decisões administrativas pertencem ao OS.
 
-Consulte as [evidências da etapa 2](docs/revisao-etapa2.md), a
+Consulte a
 [arquitetura](https://github.com/Maieru/fiap-tech-challenge/blob/main/docs/arquitetura/execution.md),
 o [padrão de mensageria](https://github.com/Maieru/fiap-tech-challenge/blob/main/docs/arquitetura/mensageria.md)
-e a [ADR-015](https://github.com/Maieru/fiap-tech-challenge/blob/main/docs/ADRs/ADR-015-execution-mongodb.md).
+e as [evidências de validação](https://github.com/Maieru/fiap-tech-challenge/blob/main/docs/operacao/validacao-execution.md)
+no repositório principal.
 
 ## Dependências e restauração
 
@@ -76,6 +70,44 @@ mantendo o grupo para reprocessar o offset pendente.
 Para executar fora do container, configure Mongo__ConnectionString, Mongo__DatabaseName,
 Kafka__BootstrapServers e Jwt__Issuer/Jwt__Audience/Jwt__SigningKey, depois use dotnet run --project src/FIAP.TechChallenge.Execution.API.
 A conexão MongoDB precisa permitir transações. Coleções e índices são criados na inicialização.
+
+## Executar as duas APIs e BDD
+
+Gere/restaure os contratos locais conforme os READMEs de cada repositório enquanto os dois pacotes 0.1.0 não estiverem públicos.
+Na raiz do repositório principal, construa a imagem OS:
+
+```powershell
+docker build -f src/Services/OrdensServico/Dockerfile -t fiap-os:local .
+```
+
+Na raiz deste repositório, preencha também OS_DB_PASSWORD no .env, mantendo JWT igual nas duas APIs:
+
+```powershell
+docker compose -f compose.yaml -f compose.integrated.yaml up --build -d
+# OS: localhost:8081; Execution: localhost:8082; Kafka compartilhado: localhost:19093
+docker compose -f compose.yaml -f compose.integrated.yaml down
+
+docker build -t fiap-execution:local .
+$env:OS_TEST_IMAGE = 'fiap-os:local'
+$env:EXECUTION_TEST_IMAGE = 'fiap-execution:local'
+dotnet test Distributed.slnx -c Release --logger trx --results-directory artifacts/distributed
+```
+
+O Compose integrado recebe OS_IMAGE como imagem pronta, mantém bancos/volumes exclusivos e compartilha somente Kafka.
+Não use o Compose independente do OS ao mesmo tempo: ele tem outro broker e usa a mesma porta HTTP.
+Down preserva os três volumes; não use -v para manter dados locais.
+
+O BDD usa Testcontainers com rede/volumes descartáveis, portas aleatórias e JWT real.
+Não exige os Composes de desenvolvimento ligados nem referências a projetos das APIs.
+Os quatro cenários verificam conclusão, cancelamento/replay, decisões concorrentes e retomada do Execution,
+incluindo histórico, estoque, snapshots e correlação/causação/trace.
+O workflow manual distributed.yml aceita imagens publicadas acessíveis ao runner. Prefira referências por digest.
+Os pipelines locais de cada serviço continuam independentes. Os dois contratos precisam estar publicados para CI limpo.
+
+O padrão e as decisões da integração ficam no repositório principal:
+[ADR-016](https://github.com/Maieru/fiap-tech-challenge/blob/main/docs/ADRs/ADR-016-integracao-os-execution.md),
+[RFC-009](https://github.com/Maieru/fiap-tech-challenge/blob/main/docs/RFCs/RFC-009-integracao-os-execution.md)
+e [ADR-015](https://github.com/Maieru/fiap-tech-challenge/blob/main/docs/ADRs/ADR-015-execution-mongodb.md).
 
 ## API
 
@@ -141,13 +173,10 @@ Preparação de catálogo ocorre por HTTP e ordens entram por Kafka. Os testes n
 
 CI tem build, testes, cobertura mínima de 80%, imagem, exportação OpenAPI e análise Sonar.
 Configure SONAR_TOKEN (secret) e SONAR_PROJECT_KEY (variable), organização maieru, no repositório Execution.
-Os workflows não foram executados remotamente nesta revisão.
+Os resultados das verificações estão nas evidências de validação do repositório principal.
 
-## Publicação e Git
+## Publicação dos contratos
 
-O pacote de contratos Execution.Application.Messaging permanece na versão 0.1.0.
+O pacote de contratos Execution.Application.Messaging usa a versão 0.1.0.
 O workflow publish-messaging.yml usa tag messaging-vX.Y.Z em commit revisado de main, variável NUGET_USER e NuGet Trusted Publishing.
 O pacote contém somente contratos, sem MongoDB/Kafka/domínio.
-
-O Git deste checkout é independente. Nenhum commit, push, tag ou publicação foi feito nesta etapa.
-O remote do Execution ainda não foi configurado.

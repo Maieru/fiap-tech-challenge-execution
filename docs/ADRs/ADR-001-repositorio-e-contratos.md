@@ -6,7 +6,7 @@
 
 ## Contexto
 
-O Execution terá ciclo de evolução independente do OS e do legado. O planejamento foi aprovado em três etapas com revisão entre elas.
+O Execution tem ciclo de evolução independente do OS e do legado.
 
 ## Decisão
 
@@ -24,9 +24,9 @@ O diagnóstico transporta snapshots de serviços e peças, sem entidades ou regr
 
 Build e testes dos contratos não dependem dos outros checkouts. O workflow de publicação usa tag messaging-vX.Y.Z
 e NuGet Trusted Publishing, sem chaves permanentes.
-A primeira etapa entregou os contratos. API, MongoDB e consumidor foram acrescentados na [etapa 2](../revisao-etapa2.md);
-o fluxo distribuído com o OS permanece para a etapa 3.
-Nenhum commit, remote, tag ou publicação foi criado durante essas implementações locais.
+API, MongoDB e consumidor Kafka pertencem ao Execution; a integração com o OS usa contratos publicados por produtor.
+O [histórico de implementação e validação](https://github.com/Maieru/fiap-tech-challenge/blob/main/docs/operacao/validacao-execution.md)
+fica nos docs do repositório principal.
 
 ## Evidências
 
