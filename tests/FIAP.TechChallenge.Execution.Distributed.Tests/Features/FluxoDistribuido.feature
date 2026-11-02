@@ -50,3 +50,17 @@ Funcionalidade: Integrar OS, Billing e Execution por Kafka
 
   Cenário: Usar JWT emitido pelo login real do OS nas três APIs
     Então as três APIs exigem autenticação e aceitam o JWT emitido pelo OS
+
+  Cenário: Aprovar pelo link privado e acompanhar a entrega administrativa
+    Dado uma ordem com diagnóstico concluído e duas peças reservadas
+    Quando o cliente consulta e aprova o orçamento pelo link privado
+    E concluo o serviço e finalizo a execução
+    E registro a entrega administrativa duas vezes
+    Então o cliente acompanha a ordem entregue sem duplicar histórico
+
+  Cenário: Cancelar pelo link privado e devolver o estoque uma única vez
+    Dado uma ordem com diagnóstico concluído e duas peças reservadas
+    Quando o cliente cancela pelo link privado
+    Então as duas APIs apresentam a ordem cancelada e o estoque volta para cinco
+    Quando reentrego o cancelamento e sua confirmação pelo Kafka
+    Então o estoque e o histórico continuam sem efeitos duplicados

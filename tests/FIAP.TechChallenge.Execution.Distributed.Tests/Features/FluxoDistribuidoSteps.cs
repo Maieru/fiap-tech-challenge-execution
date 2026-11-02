@@ -316,6 +316,70 @@ public sealed class FluxoDistribuidoSteps
             });
         }
     }
+    private string customerToken = null!;
+    private string CustomerPath => $"/api/os/v1/ordens/acompanhamento/{orderId}?token={customerToken}";
+    private async Task IssueCustomerAccess()
+    {
+        using var response = await os.PostAsJsonAsync($"/api/os/v1/ordens/{orderId}/acesso-cliente", new { });
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), await response.Content.ReadAsStringAsync());
+        customerToken = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("token").GetString()!;
+    }
+    [When("o cliente consulta e aprova o orçamento pelo link privado")]
+    public async Task CustomerApproves()
+    {
+        await IssueCustomerAccess();
+        using var customer = new HttpClient { BaseAddress = os.BaseAddress };
+        var order = await customer.GetFromJsonAsync<JsonElement>(CustomerPath);
+        var budget = order.GetProperty("orcamento");
+        Assert.Multiple(() =>
+        {
+            Assert.That(order.GetProperty("valorOrcamento").GetDecimal(), Is.EqualTo(140.55m));
+            Assert.That(budget.GetProperty("servicos")[0].GetProperty("descricao").GetString(), Is.EqualTo("Revisão"));
+            Assert.That(budget.GetProperty("pecasInsumos")[0].GetProperty("quantidade").GetInt32(), Is.EqualTo(2));
+            Assert.That(order.TryGetProperty("clienteId", out _), Is.False);
+        });
+        await Put(customer, $"/api/os/v1/ordens/acompanhamento/{orderId}/aprovar-execucao?token={customerToken}", expected: HttpStatusCode.Accepted);
+        await Put(customer, $"/api/os/v1/ordens/acompanhamento/{orderId}/aprovar-execucao?token={customerToken}", expected: HttpStatusCode.Accepted);
+        await Put(customer, $"/api/os/v1/ordens/acompanhamento/{orderId}/cancelar?token={customerToken}", expected: HttpStatusCode.Conflict);
+        await PaymentStartsExecution();
+    }
+    [When("registro a entrega administrativa duas vezes")]
+    public async Task Deliver()
+    {
+        await Wait(os, $"/api/os/v1/ordens/{orderId}", 5);
+        await Put(os, $"/api/os/v1/ordens/{orderId}/entregar");
+        await Put(os, $"/api/os/v1/ordens/{orderId}/entregar");
+        await Environment.ReplayAsync(DistributedEnvironment.ExecutionTopic, "execution.execucao-concluida", orderId, Environment.OsGroup);
+    }
+    [Then("o cliente acompanha a ordem entregue sem duplicar histórico")]
+    public async Task CustomerSeesDelivery()
+    {
+        using var customer = new HttpClient { BaseAddress = os.BaseAddress };
+        var order = await customer.GetFromJsonAsync<JsonElement>(CustomerPath);
+        var history = await History();
+        var executionOrder = await Wait(execution, $"/api/execution/v1/ordens/{orderId}", 5, nested: true);
+        var charge = await billing.GetFromJsonAsync<JsonElement>($"/api/billing/v1/ordens/{orderId}/cobranca");
+        Assert.Multiple(() =>
+        {
+            Assert.That(order.GetProperty("status").GetInt32(), Is.EqualTo(6));
+            Assert.That(order.GetProperty("dataEntrega").GetDateTime(), Is.GreaterThanOrEqualTo(order.GetProperty("dataFinalizacao").GetDateTime()));
+            Assert.That(history.GetArrayLength(), Is.EqualTo(8));
+            Assert.That(history.EnumerateArray().Count(x => x.GetProperty("tipo").GetString() == "OrdemEntregue"), Is.EqualTo(1));
+            Assert.That(charge.GetProperty("situacao").GetInt32(), Is.EqualTo(1));
+            Assert.That(executionOrder.GetProperty("valorTotal").GetDecimal(), Is.EqualTo(140.55m));
+        });
+        Assert.That(await Stock(), Is.EqualTo(3));
+    }
+    [When("o cliente cancela pelo link privado")]
+    public async Task CustomerCancels()
+    {
+        await IssueCustomerAccess();
+        using var customer = new HttpClient { BaseAddress = os.BaseAddress };
+        await Put(customer, $"/api/os/v1/ordens/acompanhamento/{orderId}/cancelar?token={customerToken}", expected: HttpStatusCode.Accepted);
+        await Put(customer, $"/api/os/v1/ordens/acompanhamento/{orderId}/cancelar?token={customerToken}", expected: HttpStatusCode.Accepted);
+        await Put(customer, $"/api/os/v1/ordens/acompanhamento/{orderId}/aprovar-execucao?token={customerToken}", expected: HttpStatusCode.Conflict);
+    }
+
     private Task<JsonElement> History() => os.GetFromJsonAsync<JsonElement>($"/api/os/v1/ordens/{orderId}/historico");
     private async Task<int> Stock() => (await execution.GetFromJsonAsync<JsonElement>($"/api/execution/v1/pecas-insumos/{partId}"))
         .GetProperty("quantidadeEstoque").GetInt32();
