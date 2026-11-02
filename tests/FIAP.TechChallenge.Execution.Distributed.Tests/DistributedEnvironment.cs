@@ -1,14 +1,12 @@
 using System.Net;
 using System.Net.Http.Headers;
-using System.Text;
+using System.Net.Http.Json;
 using System.Text.Json;
 using Confluent.Kafka;
 using Confluent.Kafka.Admin;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 using DotNet.Testcontainers.Networks;
-using Microsoft.IdentityModel.JsonWebTokens;
-using Microsoft.IdentityModel.Tokens;
 using Reqnroll;
 using Testcontainers.Kafka;
 using Testcontainers.MongoDb;
@@ -33,6 +31,7 @@ public sealed class DistributedEnvironment
     private IContainer os = null!;
     private IContainer execution = null!;
     private readonly string key = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+    private string accessToken = null!;
     public string BillingGroup { get; } = $"billing-bdd-{Guid.NewGuid():N}";
     public string OsGroup { get; } = $"os-bdd-{Guid.NewGuid():N}";
     public string ExecutionGroup { get; } = $"execution-bdd-{Guid.NewGuid():N}";
@@ -87,6 +86,15 @@ public sealed class DistributedEnvironment
             billing = Api(billingImage, "/api/billing/v1/health/ready").WithEnvironment("Kafka__GroupId", BillingGroup).WithEnvironment("ConnectionStrings__DefaultConnection", billingConnection.ToString()).WithEnvironment("Database__ApplyMigrations", "true").Build();
             await billing.StartAsync();
             await Task.WhenAll(os.StartAsync(), execution.StartAsync());
+            // Obtain the administrative JWT from the real OS login, never mint one in this driver.
+            using var identityClient = new HttpClient { BaseAddress = new Uri($"http://{os.Hostname}:{os.GetMappedPublicPort(8080)}") };
+            var credentials = new { usuario = "bdd-" + Guid.NewGuid().ToString("N"), senha = Guid.NewGuid().ToString("N") };
+            using var registered = await identityClient.PostAsJsonAsync("/api/os/v1/usuarios", credentials);
+            registered.EnsureSuccessStatusCode();
+            using var loggedIn = await identityClient.PostAsJsonAsync("/api/os/v1/usuarios/login", credentials);
+            loggedIn.EnsureSuccessStatusCode();
+            var login = await loggedIn.Content.ReadFromJsonAsync<JsonElement>();
+            accessToken = login.GetProperty("token").GetString() ?? throw new InvalidOperationException("Login OS não emitiu token.");
         }
         catch { await DisposeAsync(); throw; }
     }
@@ -109,14 +117,7 @@ public sealed class DistributedEnvironment
     private HttpClient Client(IContainer container, string correlation)
     {
         var client = new HttpClient { BaseAddress = new Uri($"http://{container.Hostname}:{container.GetMappedPublicPort(8080)}") };
-        var token = new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
-        {
-            Issuer = "distributed-tests",
-            Audience = "distributed-tests",
-            Expires = DateTime.UtcNow.AddMinutes(30),
-            SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key)), SecurityAlgorithms.HmacSha256)
-        });
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
         client.DefaultRequestHeaders.Add("X-Correlation-ID", correlation);
         return client;
     }

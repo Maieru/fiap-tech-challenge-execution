@@ -24,6 +24,7 @@ services:
       Jwt__Issuer: ${JWT_ISSUER:?Preencha JWT_ISSUER}
       Jwt__Audience: ${JWT_AUDIENCE:?Preencha JWT_AUDIENCE}
       Jwt__SigningKey: ${JWT_SIGNING_KEY:?Preencha JWT_SIGNING_KEY}
+      Jwt__AccessTokenMinutes: ${JWT_ACCESS_TOKEN_MINUTES:-60}
       Observability__EnableOtlp: ${EXECUTION_ENABLE_OTLP:-false}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://host.docker.internal:4317}
     depends_on:

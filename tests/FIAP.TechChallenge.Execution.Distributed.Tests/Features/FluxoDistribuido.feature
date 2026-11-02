@@ -47,3 +47,6 @@ Funcionalidade: Integrar OS, Billing e Execution por Kafka
     Quando paro o Billing e aprovo a ordem
     E recebo uma recusa de pagamento pelo contrato Billing
     Então a compensação cancela a ordem preservando a aprovação
+
+  Cenário: Usar JWT emitido pelo login real do OS nas três APIs
+    Então as três APIs exigem autenticação e aceitam o JWT emitido pelo OS

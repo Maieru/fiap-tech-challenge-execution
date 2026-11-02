@@ -298,6 +298,24 @@ public sealed class FluxoDistribuidoSteps
         Assert.That(await Stock(),Is.EqualTo(5));
         await Environment.StartBillingAsync();
     }
+    [Then("as três APIs exigem autenticação e aceitam o JWT emitido pelo OS")]
+    public async Task OsTokenAcceptedByAllServices()
+    {
+        foreach (var entry in new[] { (os, "/api/os/v1/ordens"), (billing, "/api/billing/v1/cobrancas"), (execution, "/api/execution/v1/servicos") })
+        {
+            using var authenticated = await entry.Item1.GetAsync(entry.Item2);
+            using var anonymous = new HttpClient { BaseAddress = entry.Item1.BaseAddress };
+            using var denied = await anonymous.GetAsync(entry.Item2);
+            anonymous.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", "invalid-token");
+            using var invalid = await anonymous.GetAsync(entry.Item2);
+            Assert.Multiple(() =>
+            {
+                Assert.That(authenticated.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+                Assert.That(denied.StatusCode, Is.EqualTo(HttpStatusCode.Unauthorized));
+                Assert.That(invalid.StatusCode, Is.EqualTo(HttpStatusCode.Unauthorized));
+            });
+        }
+    }
     private Task<JsonElement> History() => os.GetFromJsonAsync<JsonElement>($"/api/os/v1/ordens/{orderId}/historico");
     private async Task<int> Stock() => (await execution.GetFromJsonAsync<JsonElement>($"/api/execution/v1/pecas-insumos/{partId}"))
         .GetProperty("quantidadeEstoque").GetInt32();

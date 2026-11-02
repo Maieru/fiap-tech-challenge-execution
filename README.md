@@ -192,3 +192,7 @@ O pacote contém somente contratos, sem MongoDB/Kafka/domínio.
 O Compose integrado também inclui Billing em 8083 e PostgreSQL exclusivo. Forneça BILLING_DB_PASSWORD e BILLING_IMAGE, além das imagens OS/Execution. Aprovação administrativa agora solicita pagamento; somente PagamentoConfirmado autoriza Execution. Contratos Execution permanecem v1. A suíte Distributed exige as três imagens. O cenário de recusa usa um responder Kafka de teste no lugar do Billing parado; a implementação real de recusa é validada separadamente com IPaymentGateway substituto e banco/broker reais no Billing.
 
 O cenário de conclusão consulta diretamente OS, Billing e Execution, compara o orçamento/cobrança/valor, verifica estoque e reentrega pedido de pagamento, confirmação e autorização. Ao terminar, grava as respostas das três APIs em um JSON anexado pelo NUnit ao resultado; o caminho é mostrado no log. O workflow distribuído coleta os JSONs, além do TRX. Consulte o relatório de validação ponta a ponta no repositório principal para evidências e limites.
+
+## JWT emitido pelo OS
+
+O login administrativo agora é `POST /api/os/v1/usuarios/login` no OS. Execution permanece somente validador, com issuer/audience/chave iguais aos do OS. O BDD cadastra um usuário e obtém o token pelo login real, depois o utiliza nas três APIs; um cenário adicional verifica rejeição sem JWT ou com JWT inválido.
