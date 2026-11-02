@@ -13,6 +13,10 @@ o [padrão de mensageria](https://github.com/Maieru/fiap-tech-challenge/blob/mai
 e o [estado da migração](https://github.com/Maieru/fiap-tech-challenge/blob/main/docs/arquitetura/estado-da-migracao.md)
 no repositório principal.
 
+## Ambiente integrado local
+
+O Compose único para OS, Execution, Billing e dependências fica na raiz do repositório OS (`FiapTechChallengeFase1`). Nessa pasta execute `docker compose up -d --build`. A configuração e o roteiro estão no README do OS. Os três repositórios devem estar lado a lado.
+
 ## Dependências e restauração
 
 Versões fixadas: Maieru.FiapTechChallenge.Chassis 1.1.1, Maieru.FiapTechChallenge.Messaging.Kafka 0.1.1
@@ -88,6 +92,7 @@ docker compose -f compose.yaml -f compose.integrated.yaml down
 docker build -t fiap-execution:local .
 $env:OS_TEST_IMAGE = 'fiap-os:local'
 $env:EXECUTION_TEST_IMAGE = 'fiap-execution:local'
+$env:BILLING_TEST_IMAGE = 'fiap-billing:local'
 dotnet test Distributed.slnx -c Release --logger trx --results-directory artifacts/distributed
 ```
 
@@ -162,6 +167,7 @@ dotnet test Execution.slnx -c Release --no-restore --filter 'TestCategory!=Conta
 
 docker build -t fiap-execution:local .
 $env:EXECUTION_TEST_IMAGE = 'fiap-execution:local'
+$env:BILLING_TEST_IMAGE = 'fiap-billing:local'
 $env:EXECUTION_OPENAPI_OUTPUT = (Join-Path (Get-Location) 'artifacts/execution-openapi.json')
 dotnet test tests/FIAP.TechChallenge.Execution.Integration.Tests -c Release --filter 'TestCategory=ContainerImage'
 ```
@@ -180,3 +186,9 @@ Os resultados das verificações estão nas evidências de validação do reposi
 O pacote de contratos Execution.Application.Messaging está publicado no NuGet na versão 0.1.0.
 O workflow publish-messaging.yml usa tag messaging-vX.Y.Z em commit revisado de main, variável NUGET_USER e NuGet Trusted Publishing.
 O pacote contém somente contratos, sem MongoDB/Kafka/domínio.
+
+## Billing integrado
+
+O Compose integrado também inclui Billing em 8083 e PostgreSQL exclusivo. Forneça BILLING_DB_PASSWORD e BILLING_IMAGE, além das imagens OS/Execution. Aprovação administrativa agora solicita pagamento; somente PagamentoConfirmado autoriza Execution. Contratos Execution permanecem v1. A suíte Distributed exige as três imagens. O cenário de recusa usa um responder Kafka de teste no lugar do Billing parado; a implementação real de recusa é validada separadamente com IPaymentGateway substituto e banco/broker reais no Billing.
+
+O cenário de conclusão consulta diretamente OS, Billing e Execution, compara o orçamento/cobrança/valor, verifica estoque e reentrega pedido de pagamento, confirmação e autorização. Ao terminar, grava as respostas das três APIs em um JSON anexado pelo NUnit ao resultado; o caminho é mostrado no log. O workflow distribuído coleta os JSONs, além do TRX. Consulte o relatório de validação ponta a ponta no repositório principal para evidências e limites.

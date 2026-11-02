@@ -2,6 +2,10 @@ name: Distributed OS and Execution BDD
 on:
   workflow_dispatch:
     inputs:
+      billing-image:
+        description: Published immutable Billing image reference
+        required: true
+        type: string
       os-image:
         description: Published immutable OS image reference
         required: true
@@ -18,6 +22,7 @@ jobs:
     timeout-minutes: 25
     env:
       TESTCONTAINERS_WAIT_STRATEGY_TIMEOUT: '00:02:00'
+      BILLING_TEST_IMAGE: ${{ inputs.billing-image }}
       OS_TEST_IMAGE: ${{ inputs.os-image }}
       EXECUTION_TEST_IMAGE: ${{ inputs.execution-image }}
     steps:
@@ -27,6 +32,7 @@ jobs:
           dotnet-version: 10.0.x
       - name: Fetch service images
         run: |
+          docker pull "$BILLING_TEST_IMAGE"
           docker pull "$OS_TEST_IMAGE"
           docker pull "$EXECUTION_TEST_IMAGE"
       - name: Test both services through HTTP and Kafka
@@ -36,4 +42,6 @@ jobs:
         if: always()
         with:
           name: distributed-bdd
-          path: artifacts/distributed/
+          path: |
+            artifacts/distributed/
+            **/artifacts/distributed-evidence/*.json

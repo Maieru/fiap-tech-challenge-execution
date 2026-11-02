@@ -1,6 +1,7 @@
 # language: pt
-Funcionalidade: Integrar OS e Execution por Kafka
-  As duas APIs usam autenticação real, bancos exclusivos e um broker Kafka compartilhado.
+Funcionalidade: Integrar OS, Billing e Execution por Kafka
+  As três APIs usam autenticação real, bancos exclusivos e um broker Kafka compartilhado.
+  O gateway de pagamento usa o mock de produção com aprovação imediata.
 
   Cenário: Executar uma ordem e projetar sua conclusão no OS
     Dado uma ordem aberta no OS e recebida no Execution
@@ -9,7 +10,10 @@ Funcionalidade: Integrar OS e Execution por Kafka
     E aprovo a execução pela API OS
     E concluo o serviço e finalizo a execução
     Então as duas APIs apresentam a ordem finalizada com histórico e snapshots preservados
+    E os três serviços apresentam o mesmo pagamento e orçamento
     E as mensagens preservam correlação, causação e trace da autorização
+    Quando reentrego o pedido de pagamento, a confirmação e a autorização
+    Então o pagamento e a ordem finalizada permanecem sem efeitos duplicados
 
   Cenário: Cancelar e reentregar mensagens sem devolver estoque novamente
     Dado uma ordem com diagnóstico concluído e duas peças reservadas
@@ -30,3 +34,16 @@ Funcionalidade: Integrar OS e Execution por Kafka
     Então o OS confirma a abertura sem chamar a API Execution
     Quando reinicio o Execution
     Então a abertura pendente é recebida pelo Execution
+
+  Cenário: Aguardar o Billing antes de iniciar execução
+    Dado uma ordem com diagnóstico concluído e duas peças reservadas
+    Quando paro o Billing e aprovo a ordem
+    Então a execução aguarda pagamento
+    Quando reinicio o Billing
+    Então o pagamento libera a execução
+
+  Cenário: Compensar recusa de pagamento sem desfazer aprovação administrativa
+    Dado uma ordem com diagnóstico concluído e duas peças reservadas
+    Quando paro o Billing e aprovo a ordem
+    E recebo uma recusa de pagamento pelo contrato Billing
+    Então a compensação cancela a ordem preservando a aprovação

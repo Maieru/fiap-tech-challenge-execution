@@ -32,5 +32,37 @@ services:
       kafka-init:
         condition: service_completed_successfully
     restart: "no"
+  billing-database:
+    image: postgres:18.3
+    environment:
+      POSTGRES_DB: fiap_billing
+      POSTGRES_USER: fiap_billing
+      POSTGRES_PASSWORD: ${BILLING_DB_PASSWORD:?Preencha BILLING_DB_PASSWORD}
+    volumes:
+      - billing_postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fiap_billing -d fiap_billing"]
+      interval: 5s
+      retries: 20
+  billing-api:
+    image: ${BILLING_IMAGE:-fiap-billing:local}
+    ports:
+      - "127.0.0.1:8083:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: 8080
+      Database__ApplyMigrations: "true"
+      ConnectionStrings__DefaultConnection: Host=billing-database;Database=fiap_billing;Username=fiap_billing;Password=${BILLING_DB_PASSWORD:?Preencha BILLING_DB_PASSWORD}
+      Kafka__BootstrapServers: kafka:9092
+      Jwt__Issuer: ${JWT_ISSUER:?Preencha JWT_ISSUER}
+      Jwt__Audience: ${JWT_AUDIENCE:?Preencha JWT_AUDIENCE}
+      Jwt__SigningKey: ${JWT_SIGNING_KEY:?Preencha JWT_SIGNING_KEY}
+    depends_on:
+      billing-database:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    restart: "no"
 volumes:
+  billing_postgres_data:
   os_postgres_data:
