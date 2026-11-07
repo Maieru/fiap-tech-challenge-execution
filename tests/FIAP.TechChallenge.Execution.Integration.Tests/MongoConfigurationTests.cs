@@ -19,9 +19,10 @@ public sealed class MongoConfigurationTests
             .AddInfrastructure(configuration).BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task DocumentDbProfileOverridesTransportSettingsOnlyWhenEnabled(bool enabled)
+    [TestCase(false, false)]
+    [TestCase(true, true)]
+    [TestCase(false, true)]
+    public async Task CustomCaEnablesTlsIndependentlyOfDocumentDbProfile(bool enabled, bool customCa)
     {
         using var key = RSA.Create(2048);
         var request = new CertificateRequest("CN=Configuration Test CA", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
@@ -35,7 +36,7 @@ public sealed class MongoConfigurationTests
                 ["Mongo:ConnectionString"] = Connection,
                 ["Mongo:DatabaseName"] = "configuration_test",
                 ["Mongo:UseDocumentDb"] = enabled.ToString(),
-                ["Mongo:CaCertificatePath"] = certificatePath
+                ["Mongo:CaCertificatePath"] = customCa ? certificatePath : null
             });
             var client = services.GetRequiredService<IMongoClient>();
             var database = services.GetRequiredService<IMongoDatabase>();
@@ -43,14 +44,14 @@ public sealed class MongoConfigurationTests
             Assert.Multiple(() =>
             {
                 Assert.That(client.Settings.RetryWrites, Is.EqualTo(!enabled));
-                Assert.That(client.Settings.UseTls, Is.EqualTo(enabled));
+                Assert.That(client.Settings.UseTls, Is.EqualTo(customCa));
                 Assert.That(client.Settings.AllowInsecureTls, Is.False);
                 Assert.That(client.Settings.ReadPreference,
                     Is.EqualTo(enabled ? ReadPreference.Primary : ReadPreference.Secondary));
                 Assert.That(client.Settings.ServerSelectionTimeout, Is.EqualTo(TimeSpan.FromSeconds(5)));
                 Assert.That(client.Settings.ConnectTimeout, Is.EqualTo(TimeSpan.FromSeconds(5)));
                 Assert.That(database.DatabaseNamespace.DatabaseName, Is.EqualTo("configuration_test"));
-                if (enabled) Assert.That(client.Settings.SslSettings.ServerCertificateValidationCallback, Is.Not.Null);
+                if (customCa) Assert.That(client.Settings.SslSettings.ServerCertificateValidationCallback, Is.Not.Null);
             });
         }
         finally { File.Delete(certificatePath); }

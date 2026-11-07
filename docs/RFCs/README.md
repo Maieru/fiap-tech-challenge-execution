@@ -1,3 +1,3 @@
 # RFCs aceitas
 
-- [RFC-001 — Perfil DocumentDB](RFC-001-perfil-documentdb.md).
+- [RFC-001 — TLS e verificação MongoDB](RFC-001-mongodb-tls.md).

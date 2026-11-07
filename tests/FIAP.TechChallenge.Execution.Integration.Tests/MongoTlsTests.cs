@@ -6,7 +6,7 @@ using MongoDB.Driver;
 
 namespace FIAP.TechChallenge.Execution.Security.Tests;
 
-public sealed class DocumentDbTlsTests
+public sealed class MongoTlsTests
 {
     private string certificatePath = null!;
     private RSA key = null!;
@@ -34,7 +34,7 @@ public sealed class DocumentDbTlsTests
     public void ValidatesPrivateTrustWithoutAcceptingHostMismatchOrUntrustedCertificates()
     {
         var settings = new MongoClientSettings();
-        DocumentDbTls.Configure(settings, certificatePath);
+        MongoTls.Configure(settings, certificatePath);
         var callback = settings.SslSettings.ServerCertificateValidationCallback!;
         using var otherKey = RSA.Create(2048);
         var otherRequest = new CertificateRequest("CN=untrusted", otherKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
@@ -55,7 +55,7 @@ public sealed class DocumentDbTlsTests
     {
         File.WriteAllText(certificatePath, string.Empty);
 
-        Assert.That(() => DocumentDbTls.Configure(new MongoClientSettings(), certificatePath),
+        Assert.That(() => MongoTls.Configure(new MongoClientSettings(), certificatePath),
             Throws.TypeOf<InvalidOperationException>().With.Message.Contains("vazio"));
     }
 
@@ -64,7 +64,7 @@ public sealed class DocumentDbTlsTests
     {
         File.Delete(certificatePath);
 
-        Assert.That(() => DocumentDbTls.Configure(new MongoClientSettings(), certificatePath),
+        Assert.That(() => MongoTls.Configure(new MongoClientSettings(), certificatePath),
             Throws.TypeOf<FileNotFoundException>());
     }
 
@@ -74,7 +74,7 @@ public sealed class DocumentDbTlsTests
         var request = new CertificateRequest("CN=docdb.example.test", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
         using var expired = request.Create(root, DateTimeOffset.UtcNow.AddHours(-3), DateTimeOffset.UtcNow.AddHours(-1), RandomNumberGenerator.GetBytes(16));
         var settings = new MongoClientSettings();
-        DocumentDbTls.Configure(settings, certificatePath);
+        MongoTls.Configure(settings, certificatePath);
         Assert.That(settings.SslSettings.ServerCertificateValidationCallback!(this, expired, null,
             SslPolicyErrors.RemoteCertificateChainErrors), Is.False);
     }

@@ -4,13 +4,13 @@ using MongoDB.Driver;
 
 namespace FIAP.TechChallenge.Execution.Infrastructure.Persistence;
 
-public static class DocumentDbTls
+public static class MongoTls
 {
     public static void Configure(MongoClientSettings settings, string certificatePath)
     {
         var roots = new X509Certificate2Collection();
         roots.ImportFromPemFile(certificatePath);
-        if (roots.Count == 0) throw new InvalidOperationException("O bundle de CAs AWS está vazio.");
+        if (roots.Count == 0) throw new InvalidOperationException("O bundle de CAs MongoDB está vazio.");
         settings.UseTls = true;
         settings.AllowInsecureTls = false;
         settings.SslSettings = new SslSettings
