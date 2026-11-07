@@ -28,6 +28,13 @@ public static class InfrastructureDependencyInjection
             var settings = MongoClientSettings.FromConnectionString(connection);
             settings.ServerSelectionTimeout = TimeSpan.FromSeconds(5);
             settings.ConnectTimeout = TimeSpan.FromSeconds(5);
+            if (configuration.GetValue<bool>("Mongo:UseDocumentDb"))
+            {
+                settings.RetryWrites = false;
+                settings.ReadPreference = ReadPreference.Primary;
+                DocumentDbTls.Configure(settings, configuration["Mongo:CaCertificatePath"]
+                    ?? throw new InvalidOperationException("Configure Mongo:CaCertificatePath."));
+            }
             return new MongoClient(settings);
         });
         services.AddSingleton(provider => provider.GetRequiredService<IMongoClient>().GetDatabase(

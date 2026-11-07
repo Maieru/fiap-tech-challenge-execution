@@ -1,54 +1,71 @@
-name: Deploy manifests to EKS
+name: Deploy and migrate service
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
-      image_sha:
-        description: SHA completo da imagem publicada (vazio usa o commit desta execucao)
+      source_sha:
         type: string
+        required: true
+      role_arn:
+        type: string
+        required: true
+      component:
+        type: string
+        default: execution
+      image_digest:
+        type: string
+        required: true
+      kafka_bootstrap_servers:
+        type: string
+        required: true
+      jwt_issuer:
+        type: string
+        required: true
+      jwt_audience:
+        type: string
+        required: true
+    secrets:
+      REPOSITORIES_TOKEN:
         required: false
+    outputs: {}
 permissions:
   contents: read
-concurrency:
-  group: deploy-execution-eks
-  cancel-in-progress: false
+  actions: read
+  id-token: write
 jobs:
   deploy:
     runs-on: ubuntu-22.04
-    timeout-minutes: 25
-    if: github.ref == 'refs/heads/main'
-    permissions:
-      contents: read
-      actions: read
-      id-token: write
+    timeout-minutes: 35
+    if: github.repository == 'Maieru/fiap-tech-challenge' && github.ref == 'refs/heads/main'
     env:
-      COMPONENT: execution
-      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      AWS_REGION: us-east-1
+      COMPONENT: ${{ inputs.component }}
+      SOURCE_SHA: ${{ inputs.source_sha }}
+      GH_TOKEN: ${{ secrets.REPOSITORIES_TOKEN || github.token }}
+      EKS_CLUSTER_NAME: fiap-eks-cluster
+      IMAGE_DIGEST: ${{ inputs.image_digest }}
+      KAFKA_BOOTSTRAP_SERVERS: ${{ inputs.kafka_bootstrap_servers }}
+      JWT_ISSUER: ${{ inputs.jwt_issuer }}
+      JWT_AUDIENCE: ${{ inputs.jwt_audience }}
+      DELIVERY_RUN: ${{ github.run_id }}-${{ github.run_attempt }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: Maieru/fiap-tech-challenge-execution
+          ref: ${{ inputs.source_sha }}
+          token: ${{ secrets.REPOSITORIES_TOKEN || github.token }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22
-      - name: Instalar ferramentas de entrega
-        run: npm ci --prefix scripts/delivery --ignore-scripts --no-audit --no-fund
-      - name: Testar ferramentas de entrega
-        run: npm test --prefix scripts/delivery
-      - name: Exigir CI aprovado para este commit em main
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - run: npm ci --prefix scripts/delivery --ignore-scripts --no-audit --no-fund
+      - run: npm test --prefix scripts/delivery
+      - name: Exigir CI do SHA e repositorio selecionados
         run: node scripts/delivery/delivery.mjs verify-ci
-
-      - name: Autenticar deploy AWS por OIDC
-        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+      - name: Autenticar AWS via OIDC
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a
         with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-      - name: Renderizar, validar e aplicar manifestos
-        env:
-          GH_TOKEN: ${{ github.token }}
-          EKS_CLUSTER_NAME: fiap-eks-cluster
-          IMAGE_SHA: ${{ inputs.image_sha }}
-          KAFKA_BOOTSTRAP_SERVERS: ${{ vars.KAFKA_BOOTSTRAP_SERVERS }}
-          JWT_ISSUER: ${{ vars.JWT_ISSUER }}
-          JWT_AUDIENCE: ${{ vars.JWT_AUDIENCE }}
-          DELIVERY_RUN: ${{ github.run_id }}-${{ github.run_attempt }}
+          role-to-assume: ${{ inputs.role_arn }}
+          aws-region: us-east-1
+      - name: Sincronizar segredos, migrar e acompanhar rollout
+        id: image
         run: node scripts/delivery/delivery.mjs deploy

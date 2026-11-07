@@ -28,6 +28,10 @@ spec:
         runAsGroup: 1654
         seccompProfile:
           type: RuntimeDefault
+      volumes:
+        - name: database-ca
+          configMap:
+            name: aws-database-ca
       containers:
         - name: fiap-execution
           image: registry.example.invalid/fiap-execution:REPLACE_WITH_IMMUTABLE_TAG
@@ -35,6 +39,10 @@ spec:
           ports:
             - name: http
               containerPort: 8080
+          volumeMounts:
+            - name: database-ca
+              mountPath: /certs
+              readOnly: true
           envFrom:
             - configMapRef:
                 name: fiap-execution-config

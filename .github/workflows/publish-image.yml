@@ -1,41 +1,60 @@
-name: Publish image to ECR
+name: Publish immutable image
 on:
-  workflow_dispatch: {}
+  workflow_call:
+    inputs:
+      source_sha:
+        type: string
+        required: true
+      role_arn:
+        type: string
+        required: true
+      component:
+        type: string
+        default: execution
+    secrets:
+      REPOSITORIES_TOKEN:
+        required: false
+    outputs:
+      image_digest:
+        value: ${{ jobs.publish.outputs.image_digest }}
+      image_uri:
+        value: ${{ jobs.publish.outputs.image_uri }}
 permissions:
   contents: read
-concurrency:
-  group: publish-execution-${{ github.sha }}
-  cancel-in-progress: false
+  actions: read
+  id-token: write
 jobs:
   publish:
     runs-on: ubuntu-22.04
-    timeout-minutes: 25
-    if: github.ref == 'refs/heads/main'
-    permissions:
-      contents: read
-      actions: read
-      id-token: write
+    timeout-minutes: 35
+    if: github.repository == 'Maieru/fiap-tech-challenge' && github.ref == 'refs/heads/main'
+    outputs:
+      image_digest: ${{ steps.image.outputs.image_digest }}
+      image_uri: ${{ steps.image.outputs.image_uri }}
     env:
-      COMPONENT: execution
-      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      AWS_REGION: us-east-1
+      COMPONENT: ${{ inputs.component }}
+      SOURCE_SHA: ${{ inputs.source_sha }}
+      GH_TOKEN: ${{ secrets.REPOSITORIES_TOKEN || github.token }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: Maieru/fiap-tech-challenge-execution
+          ref: ${{ inputs.source_sha }}
+          token: ${{ secrets.REPOSITORIES_TOKEN || github.token }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22
-      - name: Instalar ferramentas de entrega
-        run: npm ci --prefix scripts/delivery --ignore-scripts --no-audit --no-fund
-      - name: Testar ferramentas de entrega
-        run: npm test --prefix scripts/delivery
-      - name: Exigir CI aprovado para este commit em main
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - run: npm ci --prefix scripts/delivery --ignore-scripts --no-audit --no-fund
+      - run: npm test --prefix scripts/delivery
+      - name: Exigir CI do SHA e repositorio selecionados
         run: node scripts/delivery/delivery.mjs verify-ci
-
-      - name: Autenticar publicacao AWS por OIDC
-        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+      - name: Autenticar AWS via OIDC
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a
         with:
-          role-to-assume: ${{ vars.AWS_PUBLISH_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-      - name: Publicar imagem imutavel e registrar digest
+          role-to-assume: ${{ inputs.role_arn }}
+          aws-region: us-east-1
+      - name: Publicar por SHA e exportar digest
+        id: image
         run: node scripts/delivery/delivery.mjs publish

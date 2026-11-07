@@ -14,3 +14,5 @@ data:
   Observability__EnableOtlp: "true"
   OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.fiap-observability.svc:4317"
   OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
+  Mongo__UseDocumentDb: "true"
+  Mongo__CaCertificatePath: "/certs/global-bundle.pem"

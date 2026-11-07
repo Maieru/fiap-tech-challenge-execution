@@ -33,9 +33,14 @@ export function approvedRun(runs, revision) {
     ["push", "workflow_dispatch"].includes(r.event)).sort((a, b) => b.run_number - a.run_number);
   return relevant[0]?.status === "completed" && relevant[0]?.conclusion === "success";
 }
-async function verifyCi(config, revision = sha(process.env.GITHUB_SHA)) {
+export function sourceContext(config, environment = process.env) {
+  if (!/^Maieru\/fiap-tech-challenge(?:-execution|-billing)?$/.test(config.repository || '')) throw new Error("Repositorio de origem invalido.");
+  return { repository: config.repository, revision: sha(environment.SOURCE_SHA || environment.GITHUB_SHA) };
+}
+async function verifyCi(config, revision = sourceContext(config).revision) {
   if (process.env.GITHUB_REF !== "refs/heads/main") throw new Error("Entrega permitida somente em main.");
-  const repository = required("GITHUB_REPOSITORY");
+  const repository = sourceContext(config).repository;
+  if (run("git", ["rev-parse", "HEAD"], { cwd: root }) !== sourceContext(config).revision) throw new Error("Checkout diverge do SHA de origem.");
   const url = new URL(`https://api.github.com/repos/${repository}/actions/workflows/${config.ci}/runs`);
   url.search = new URLSearchParams({ head_sha: revision, per_page: "100" }).toString();
   const response = await fetch(url, { headers: {
@@ -70,7 +75,7 @@ function summary(message) {
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, message + "\n");
 }
 function publish(config) {
-  const revision = sha(process.env.GITHUB_SHA);
+  const revision = sourceContext(config).revision;
   const uri = repositoryUri(config);
   let hash = digest(config, revision, true);
   if (!hash) {
@@ -79,11 +84,12 @@ function publish(config) {
     run("docker", ["login", "--username", "AWS", "--password-stdin", registry], { input: password });
     const tagged = uri + ":sha-" + revision;
     run("docker", ["build", "--label", "org.opencontainers.image.revision=" + revision,
-      "--label", "org.opencontainers.image.source=https://github.com/" + required("GITHUB_REPOSITORY"),
+      "--label", "org.opencontainers.image.source=https://github.com/" + sourceContext(config).repository,
       "-f", config.dockerfile, "-t", tagged, config.context], { cwd: root, stdio: "inherit" });
     run("docker", ["push", tagged], { stdio: "inherit" });
     hash = digest(config, revision);
   }
+  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, "image_digest=" + hash + "\nimage_uri=" + uri + "@" + hash + "\n");
   summary("Imagem publicada/verificada: `" + uri + "@" + hash + "` (sha-" + revision + ").");
 }
 export function render(config, image, settings, deliveryRun) {
@@ -143,10 +149,25 @@ async function kubectlBinary(cluster) {
   chmodSync(target, 0o700);
   return target;
 }
+export function migrationJob(deployment, name) {
+  const container = deployment.spec.template.spec.containers[0];
+  const connection = container.env.find(e => e.name === "ConnectionStrings__DefaultConnection");
+  if (!connection) throw new Error("Migration exige credencial do proprio banco.");
+  return { apiVersion: "batch/v1", kind: "Job", metadata: { name, namespace: deployment.metadata.namespace }, spec: {
+    backoffLimit: 0, activeDeadlineSeconds: 540, template: { spec: {
+      restartPolicy: "Never", automountServiceAccountToken: false,
+      securityContext: deployment.spec.template.spec.securityContext,
+      volumes: deployment.spec.template.spec.volumes,
+      containers: [{ name: "migrate", image: container.image, args: ["--migrate-only"], env: [connection],
+        securityContext: container.securityContext, volumeMounts: container.volumeMounts, resources: container.resources }]
+    } }
+  } };
+}
 async function deploy(config) {
-  const revision = sha(process.env.IMAGE_SHA?.trim() || process.env.GITHUB_SHA);
+  const revision = sourceContext(config).revision;
   await verifyCi(config, revision);
   const image = repositoryUri(config) + "@" + digest(config, revision);
+  if (process.env.IMAGE_DIGEST && !image.endsWith("@" + process.env.IMAGE_DIGEST)) throw new Error("Digest diverge da publicacao selecionada.");
   const docs = render(config, image, {
     kafka: process.env.KAFKA_BOOTSTRAP_SERVERS?.trim(),
     issuer: process.env.JWT_ISSUER?.trim(), audience: process.env.JWT_AUDIENCE?.trim()
@@ -188,6 +209,24 @@ async function deploy(config) {
     }
     if (!ready) throw new Error("Secret nao foi atualizado pelo operador: " + name);
   }
+  if (["os", "billing"].includes(process.env.COMPONENT)) {
+    const deployment = docs.find(d => d.kind === "Deployment");
+    const name = "fiap-" + process.env.COMPONENT + "-migrate-" + revision.slice(0, 12);
+    const file = join(tmpdir(), basename(folder) + "-migration.json");
+    writeFileSync(file, JSON.stringify(migrationJob(deployment, name)));
+    k(["delete", "job", name, "--ignore-not-found=true", "--wait=true"]);
+    k(["create", "-f", file]);
+    let complete = false;
+    for (let attempt = 0; attempt < 120; attempt++) {
+      const status = JSON.parse(k(["get", "job", name, "-o", "json"])).status;
+      if (status?.conditions?.some(c => c.type === "Failed" && c.status === "True")) break;
+      if (status?.succeeded === 1) { complete = true; break; }
+      await new Promise(resolve => setTimeout(resolve, 5000));
+    }
+    console.log(k(["logs", "job/" + name]));
+    if (!complete) throw new Error("Migration falhou ou excedeu o prazo: " + name);
+    k(["delete", "job", name, "--wait=true"]);
+  }
   const priority = { ConfigMap: 0, Service: 1, Deployment: 2, HorizontalPodAutoscaler: 3, Ingress: 4 };
   for (const { file } of files.filter(f => f.doc.kind !== "ExternalSecret")
     .sort((a, b) => priority[a.doc.kind] - priority[b.doc.kind])) {
@@ -195,7 +234,7 @@ async function deploy(config) {
   }
   const deployment = docs.find(d => d.kind === "Deployment").metadata.name;
   console.log(k(["rollout", "status", "deployment/" + deployment, "--timeout=360s"]));
-  summary("Deploy: `" + config.namespace + "/" + deployment + "` → `" + image + "`. Manifestos do commit `" + process.env.GITHUB_SHA + "`.");
+  summary("Deploy: `" + config.namespace + "/" + deployment + "` → `" + image + "`. Manifestos do commit `" + revision + "`.");
 }
 async function main() {
   const config = component(required("COMPONENT"));

@@ -5,6 +5,7 @@
     "context": ".",
     "dockerfile": "Dockerfile",
     "manifests": "k8s",
-    "namespace": "fiap-execution"
+    "namespace": "fiap-execution",
+    "repository": "Maieru/fiap-tech-challenge-execution"
   }
 }

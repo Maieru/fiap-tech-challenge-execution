@@ -1,17 +1,19 @@
+using Microsoft.Extensions.Configuration;
 using FIAP.TechChallenge.Execution.Application.Abstractions;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 
 namespace FIAP.TechChallenge.Execution.Infrastructure.Persistence;
 
-public sealed class MongoUnitOfWork(IMongoClient client, ILogger<MongoUnitOfWork> logger) : IUnitOfWork, ITransaction
+public sealed class MongoUnitOfWork(IMongoClient client, ILogger<MongoUnitOfWork> logger, IConfiguration? configuration = null) : IUnitOfWork, ITransaction
 {
     public IClientSessionHandle? Session { get; private set; }
 
     public async Task<ITransaction> BeginAsync(CancellationToken cancellationToken = default)
     {
         if (Session is not null) throw new InvalidOperationException("Já existe uma transação neste escopo.");
-        Session = await client.StartSessionAsync(cancellationToken: cancellationToken);
+        Session = await client.StartSessionAsync(configuration?.GetValue<bool>("Mongo:UseDocumentDb") == true
+            ? new ClientSessionOptions { CausalConsistency = false } : null, cancellationToken);
         Session.StartTransaction(new TransactionOptions(readConcern: ReadConcern.Snapshot,
             writeConcern: WriteConcern.WMajority, readPreference: ReadPreference.Primary,
             maxCommitTime: TimeSpan.FromSeconds(10)));

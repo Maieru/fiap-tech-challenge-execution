@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
-import { approvedRun, component, imageNotFound, render, run, sha } from "./delivery.mjs";
+import { sourceContext, migrationJob, approvedRun, component, imageNotFound, render, run, sha } from "./delivery.mjs";
 const definitions = JSON.parse(readFileSync(new URL("./components.json", import.meta.url), "utf8"));
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const digest = "123456789012.dkr.ecr.us-east-1.amazonaws.com/app@sha256:" + "a".repeat(64);
@@ -67,5 +67,24 @@ for (const name of Object.keys(definitions)) {
       assert.notEqual(pod(render(config, digest, settings, "1"))["fiap.tech-challenge/config-checksum"],
         pod(render(config, digest, { ...settings, audience: "other" }, "1"))["fiap.tech-challenge/config-checksum"]);
     }
+  });
+}
+
+test("origem e CI usam o repositorio do servico mesmo com chamador central", () => {
+  const config = component(Object.keys(definitions)[0]);
+  const actual = sourceContext(config, { GITHUB_REPOSITORY: "Maieru/fiap-tech-challenge", GITHUB_SHA: "a".repeat(40), SOURCE_SHA: "b".repeat(40) });
+  assert.deepEqual(actual, { repository: config.repository, revision: "b".repeat(40) });
+  assert.throws(() => sourceContext(config, { SOURCE_SHA: "main" }));
+});
+for (const name of Object.keys(definitions).filter(n => ["os", "billing"].includes(n))) {
+  test(name + ": migration usa a mesma imagem e somente credencial PostgreSQL", () => {
+    const deployment = render(component(name), digest, settings, "test").find(d => d.kind === "Deployment");
+    const job = migrationJob(deployment, "migration-test");
+    const container = job.spec.template.spec.containers[0];
+    assert.equal(container.image, digest);
+    assert.deepEqual(container.args, ["--migrate-only"]);
+    assert.deepEqual(container.env.map(e => e.name), ["ConnectionStrings__DefaultConnection"]);
+    assert.equal(job.spec.template.spec.automountServiceAccountToken, false);
+    assert.equal(job.spec.backoffLimit, 0);
   });
 }
