@@ -1,0 +1,54 @@
+name: Deploy manifests to EKS
+on:
+  workflow_dispatch:
+    inputs:
+      image_sha:
+        description: SHA completo da imagem publicada (vazio usa o commit desta execucao)
+        type: string
+        required: false
+permissions:
+  contents: read
+concurrency:
+  group: deploy-execution-eks
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      COMPONENT: execution
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Instalar ferramentas de entrega
+        run: npm ci --prefix scripts/delivery --ignore-scripts --no-audit --no-fund
+      - name: Testar ferramentas de entrega
+        run: npm test --prefix scripts/delivery
+      - name: Exigir CI aprovado para este commit em main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/delivery/delivery.mjs verify-ci
+
+      - name: Autenticar deploy AWS por OIDC
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Renderizar, validar e aplicar manifestos
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EKS_CLUSTER_NAME: fiap-eks-cluster
+          IMAGE_SHA: ${{ inputs.image_sha }}
+          KAFKA_BOOTSTRAP_SERVERS: ${{ vars.KAFKA_BOOTSTRAP_SERVERS }}
+          JWT_ISSUER: ${{ vars.JWT_ISSUER }}
+          JWT_AUDIENCE: ${{ vars.JWT_AUDIENCE }}
+          DELIVERY_RUN: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: node scripts/delivery/delivery.mjs deploy

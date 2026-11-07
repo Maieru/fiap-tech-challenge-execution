@@ -4,6 +4,7 @@
 .vscode/
 .sonarqube/
 artifacts/
+scripts/delivery/node_modules/
 TestResults/
 *.user
 *.suo

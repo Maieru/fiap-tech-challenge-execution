@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fiap-execution-config
+  namespace: fiap-execution
+data:
+  ASPNETCORE_ENVIRONMENT: "Production"
+  ASPNETCORE_HTTP_PORTS: "8080"
+  Kafka__BootstrapServers: "REPLACE_WITH_KAFKA_BOOTSTRAP_SERVERS"
+  Kafka__GroupId: "oficina-execution-v1"
+  Jwt__Issuer: "REPLACE_WITH_JWT_ISSUER"
+  Jwt__Audience: "REPLACE_WITH_JWT_AUDIENCE"
+  Mongo__DatabaseName: "fiap_execution"
+  Observability__EnableOtlp: "true"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.fiap-observability.svc:4317"
+  OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"

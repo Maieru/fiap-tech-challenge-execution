@@ -1,0 +1,41 @@
+name: Publish image to ECR
+on:
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: publish-execution-${{ github.sha }}
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      COMPONENT: execution
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Instalar ferramentas de entrega
+        run: npm ci --prefix scripts/delivery --ignore-scripts --no-audit --no-fund
+      - name: Testar ferramentas de entrega
+        run: npm test --prefix scripts/delivery
+      - name: Exigir CI aprovado para este commit em main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/delivery/delivery.mjs verify-ci
+
+      - name: Autenticar publicacao AWS por OIDC
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          role-to-assume: ${{ vars.AWS_PUBLISH_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Publicar imagem imutavel e registrar digest
+        run: node scripts/delivery/delivery.mjs publish
