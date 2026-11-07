@@ -51,6 +51,24 @@ public sealed class DocumentDbTlsTests
     }
 
     [Test]
+    public void RejectsEmptyCertificateBundle()
+    {
+        File.WriteAllText(certificatePath, string.Empty);
+
+        Assert.That(() => DocumentDbTls.Configure(new MongoClientSettings(), certificatePath),
+            Throws.TypeOf<InvalidOperationException>().With.Message.Contains("vazio"));
+    }
+
+    [Test]
+    public void RejectsMissingCertificateBundle()
+    {
+        File.Delete(certificatePath);
+
+        Assert.That(() => DocumentDbTls.Configure(new MongoClientSettings(), certificatePath),
+            Throws.TypeOf<FileNotFoundException>());
+    }
+
+    [Test]
     public void RejectsExpiredCertificates()
     {
         var request = new CertificateRequest("CN=docdb.example.test", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);

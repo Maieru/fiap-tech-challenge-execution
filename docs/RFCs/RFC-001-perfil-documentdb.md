@@ -14,3 +14,5 @@ O modo --verify-persistence não inicia HTTP nem consumidores. Exige banco fiap_
 Desabilitar TLS/validação reduziria configuração, mas não foi adotado. Ignorar diferenças de sessão transferiria falhas ao rollout; o gate real bloqueia esse cenário. Os testes existentes continuam com MongoDB; o gate não substitui validação funcional ponta a ponta, executada pelo smoke central.
 
 Evidências: DocumentDbTlsTests, PersistenceCompatibility e Job initialize-databases do DB. Resultado remoto depende da execução AWS após publicação/bootstrap.
+
+Os testes locais cobrem também bundle ausente/vazio, configuração DocumentDB habilitada/desabilitada e obrigatoriedade da CA; MongoUnitOfWorkProfileTests confirma a opção de sessão e commit em MongoDB real. PersistenceCompatibilityTests executa o modo CLI sem JWT/Kafka, verifica preservação de bancos fora do prefixo permitido e limpeza do banco temporário em cancelamento ou índice incompatível. Esses testes não substituem o gate no DocumentDB real.
