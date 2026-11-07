@@ -32,9 +32,11 @@ public static class InfrastructureDependencyInjection
             {
                 settings.RetryWrites = false;
                 settings.ReadPreference = ReadPreference.Primary;
-                DocumentDbTls.Configure(settings, configuration["Mongo:CaCertificatePath"]
-                    ?? throw new InvalidOperationException("Configure Mongo:CaCertificatePath."));
             }
+            var certificatePath = configuration["Mongo:CaCertificatePath"];
+            if (configuration.GetValue<bool>("Mongo:UseDocumentDb") && certificatePath is null)
+                throw new InvalidOperationException("Configure Mongo:CaCertificatePath.");
+            if (certificatePath is not null) MongoTls.Configure(settings, certificatePath);
             return new MongoClient(settings);
         });
         services.AddSingleton(provider => provider.GetRequiredService<IMongoClient>().GetDatabase(

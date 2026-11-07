@@ -31,7 +31,7 @@ spec:
       volumes:
         - name: database-ca
           configMap:
-            name: aws-database-ca
+            name: mongodb-ca
       containers:
         - name: fiap-execution
           image: registry.example.invalid/fiap-execution:REPLACE_WITH_IMMUTABLE_TAG
