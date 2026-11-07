@@ -1,0 +1,93 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fiap-execution-deployment
+  namespace: fiap-execution
+  labels:
+    app.kubernetes.io/name: fiap-execution
+spec:
+  # O HPA controla replicas; um Deployment novo inicia com uma replica.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fiap-execution
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: fiap-execution
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1654
+        runAsGroup: 1654
+        seccompProfile:
+          type: RuntimeDefault
+      volumes:
+        - name: database-ca
+          configMap:
+            name: aws-database-ca
+      containers:
+        - name: fiap-execution
+          image: registry.example.invalid/fiap-execution:REPLACE_WITH_IMMUTABLE_TAG
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          volumeMounts:
+            - name: database-ca
+              mountPath: /certs
+              readOnly: true
+          envFrom:
+            - configMapRef:
+                name: fiap-execution-config
+          env:
+            - name: Mongo__ConnectionString
+              valueFrom:
+                secretKeyRef:
+                  name: fiap-execution-database-credentials
+                  key: Mongo__ConnectionString
+            - name: Jwt__SigningKey
+              valueFrom:
+                secretKeyRef:
+                  name: fiap-execution-jwt-signing-key
+                  key: Jwt__SigningKey
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          startupProbe:
+            httpGet:
+              path: /api/execution/v1/health/live
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 60
+          livenessProbe:
+            httpGet:
+              path: /api/execution/v1/health/live
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/execution/v1/health/ready
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+              ephemeral-storage: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+              ephemeral-storage: "256Mi"

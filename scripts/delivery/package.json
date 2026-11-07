@@ -1,0 +1,14 @@
+{
+  "name": "fiap-execution-delivery",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test delivery.test.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "yaml": "2.8.3"
+  }
+}

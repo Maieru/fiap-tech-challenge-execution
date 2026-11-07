@@ -1,0 +1,11 @@
+{
+  "execution": {
+    "ci": "ci.yml",
+    "ecr": "fiap-ecr-execution-repository",
+    "context": ".",
+    "dockerfile": "Dockerfile",
+    "manifests": "k8s",
+    "namespace": "fiap-execution",
+    "repository": "Maieru/fiap-tech-challenge-execution"
+  }
+}

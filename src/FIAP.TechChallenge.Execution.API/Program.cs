@@ -14,6 +14,13 @@ public partial class Program
     public static async Task Main(string[] args)
     {
         var builder = WebApplication.CreateBuilder(args);
+        if (args.Contains("--verify-persistence", StringComparer.Ordinal))
+        {
+            _ = builder.Services.AddInfrastructure(builder.Configuration);
+            await using var verificationApp = builder.Build();
+            await FIAP.TechChallenge.Execution.Infrastructure.Persistence.PersistenceCompatibility.VerifyAsync(verificationApp.Services);
+            return;
+        }
         _ = builder.Services.AddControllers();
         _ = builder.Services.AddOpenApi();
         _ = builder.Services.AddApplication();

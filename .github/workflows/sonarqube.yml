@@ -39,6 +39,7 @@ jobs:
           dotnet sonarscanner begin /k:"$SONAR_PROJECT_KEY" /o:maieru
           /d:sonar.token="$SONAR_TOKEN" /d:sonar.host.url=https://sonarcloud.io
           /d:sonar.cs.opencover.reportsPaths=artifacts/reports/**/coverage.opencover.xml
+          /d:sonar.exclusions=**/*.mjs
           /d:sonar.scanner.scanAll=false /d:sonar.qualitygate.wait=true
       - run: dotnet build Execution.slnx -c Release --no-incremental
       - run: dotnet sonarscanner end /d:sonar.token="$SONAR_TOKEN"

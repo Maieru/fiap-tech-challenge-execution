@@ -1,5 +1,7 @@
 # FIAP Tech Challenge — Execution
 
+> Operação AWS atual: ciclo completo centralizado em `manage-platform.yml` no repositório principal. Bancos gerenciados (RDS/DocumentDB), Kafka no EKS, segredos e migrations são provisionados pelo fluxo. Instruções antigas de ações manuais/pré-requisitos avulsos abaixo são históricas; seguir o [guia operacional](https://github.com/Maieru/fiap-tech-challenge/blob/main/docs/operacao/plataforma-aws.md). A aplicação remota ainda exige publicação coordenada, transição e bootstrap.
+
 Serviço independente de diagnóstico, catálogo, estoque e execução, em .NET 10 com MongoDB próprio e Kafka.
 
 O Execution recebe OrdemServicoCriada, ExecucaoAutorizada e CancelamentoSolicitado por Kafka.
@@ -111,6 +113,12 @@ O padrão e as decisões da integração ficam no repositório principal:
 [ADR-016](https://github.com/Maieru/fiap-tech-challenge/blob/main/docs/ADRs/ADR-016-integracao-os-execution.md),
 [RFC-009](https://github.com/Maieru/fiap-tech-challenge/blob/main/docs/RFCs/RFC-009-integracao-os-execution.md)
 e [ADR-015](https://github.com/Maieru/fiap-tech-challenge/blob/main/docs/ADRs/ADR-015-execution-mongodb.md).
+
+## Kubernetes / EKS
+
+As Actions manuais [publish-image.yml e deploy-eks.yml](scripts/delivery/README.md) publicam no ECR e aplicam os manifestos no EKS, em main com CI aprovado. A publicação usa tag por commit e o deploy usa digest; configure as roles OIDC e variáveis conforme o guia.
+
+Os [manifestos e o roteiro manual](k8s/README.md) configuram HTTP interno 8080, HPA de 1 a 3 réplicas, credencial MongoDB exclusiva e OTLP ativo para o Collector compartilhado. Namespace/SecretStore pertencem ao Infra. Bancos, Kafka, segredos/IAM, imagens e deploy são etapas externas; não há implantação automática nesta entrega.
 
 ## API
 
