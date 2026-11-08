@@ -2,6 +2,8 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text;
+using System.Security.Cryptography;
 using Confluent.Kafka;
 using Confluent.Kafka.Admin;
 using DotNet.Testcontainers.Builders;
@@ -28,6 +30,7 @@ public sealed class DistributedEnvironment
     private PostgreSqlContainer postgres = null!;
     private PostgreSqlContainer billingDb = null!;
     private IContainer billing = null!;
+    private IContainer mercadoPago = null!;
     private IContainer os = null!;
     private IContainer execution = null!;
     private readonly string key = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
@@ -52,6 +55,10 @@ public sealed class DistributedEnvironment
         try
         {
             await network.CreateAsync();
+            mercadoPago = new ContainerBuilder("node:22-alpine").WithNetwork(network).WithNetworkAliases("mercadopago")
+                .WithEntrypoint("node", "-e", MercadoPagoFixture.Server)
+                .WithWaitStrategy(Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(8080)).Build();
+            await mercadoPago.StartAsync();
             postgres = new PostgreSqlBuilder("postgres:18.3").WithNetwork(network).WithNetworkAliases("postgres")
                 .WithDatabase("fiap_os").WithUsername("fiap_os").WithPassword(Guid.NewGuid().ToString("N")).Build();
             mongo = new MongoDbBuilder("mongo:8.0").WithNetwork(network).WithNetworkAliases("mongo").WithReplicaSet("distributed-tests").Build();
@@ -83,7 +90,11 @@ public sealed class DistributedEnvironment
                 .WithEnvironment("Mongo__DatabaseName", "fiap_execution")
                 .WithEnvironment("Kafka__GroupId", ExecutionGroup).Build();
             var billingConnection = new System.Data.Common.DbConnectionStringBuilder { ConnectionString = billingDb.GetConnectionString() }; billingConnection["Host"] = "billing-db"; billingConnection["Port"] = 5432;
-            billing = Api(billingImage, "/api/billing/v1/health/ready").WithEnvironment("Kafka__GroupId", BillingGroup).WithEnvironment("ConnectionStrings__DefaultConnection", billingConnection.ToString()).WithEnvironment("Database__ApplyMigrations", "true").Build();
+            billing = Api(billingImage, "/api/billing/v1/health/ready")
+                .WithEnvironment("MercadoPago__BaseUrl", "http://mercadopago:8080/")
+                .WithEnvironment("MercadoPago__AccessToken", "test-access-token")
+                .WithEnvironment("MercadoPago__WebhookSecret", "test-webhook-secret")
+                .WithEnvironment("Kafka__GroupId", BillingGroup).WithEnvironment("ConnectionStrings__DefaultConnection", billingConnection.ToString()).WithEnvironment("Database__ApplyMigrations", "true").Build();
             await billing.StartAsync();
             await Task.WhenAll(os.StartAsync(), execution.StartAsync());
             // Obtain the administrative JWT from the real OS login, never mint one in this driver.
@@ -162,6 +173,32 @@ public sealed class DistributedEnvironment
         return result;
     }
 
+    public async Task ConfirmPaymentAsync(Guid orderId)
+    {
+        using var client = BillingClient("payment-fixture");
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        string externalId;
+        while (true)
+        {
+            using var response = await client.GetAsync($"/api/billing/v1/ordens/{orderId}/cobranca", timeout.Token);
+            if (response.IsSuccessStatusCode)
+            {
+                var charge = await response.Content.ReadFromJsonAsync<JsonElement>(timeout.Token);
+                if (charge.GetProperty("situacao").GetInt32() != 0) return;
+                externalId = charge.GetProperty("gatewayOrderId").GetString()!;
+                break;
+            }
+            await Task.Delay(100, timeout.Token);
+        }
+        var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString();
+        var hash = HMACSHA256.HashData(Encoding.UTF8.GetBytes("test-webhook-secret"), Encoding.UTF8.GetBytes($"id:{externalId.ToLowerInvariant()};request-id:bdd;ts:{timestamp};"));
+        using var notification = new HttpRequestMessage(HttpMethod.Post, $"/api/billing/v1/webhooks/mercadopago?data.id={externalId}&type=order");
+        notification.Headers.Add("x-request-id", "bdd");
+        notification.Headers.Add("x-signature", $"ts={timestamp},v1={Convert.ToHexStringLower(hash)}");
+        using var result = await client.SendAsync(notification, timeout.Token);
+        Assert.That(result.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+    }
+
     public async Task RejectPaymentAsync(Guid orderId)
     {
         // Contract-level rejected Billing responder, isolated to this test group while the real Billing is stopped.
@@ -191,6 +228,7 @@ public sealed class DistributedEnvironment
     private async Task DisposeAsync()
     {
         if (billing is not null) await billing.DisposeAsync();
+        if (mercadoPago is not null) await mercadoPago.DisposeAsync();
         if (billingDb is not null) await billingDb.DisposeAsync();
         if (os is not null) await os.DisposeAsync();
         if (execution is not null) await execution.DisposeAsync();
