@@ -76,6 +76,7 @@ public sealed class FluxoDistribuidoSteps
     public async Task Approve()
     {
         await Put(os, $"/api/os/v1/ordens/{orderId}/aprovar-execucao", expected: HttpStatusCode.Accepted);
+        await Environment.ConfirmPaymentAsync(orderId);
         await Wait(execution, $"/api/execution/v1/ordens/{orderId}", 4, nested: true);
         await Wait(os, $"/api/os/v1/ordens/{orderId}", 4);
     }
@@ -123,7 +124,7 @@ public sealed class FluxoDistribuidoSteps
             Assert.That(charge.GetProperty("valor").GetDecimal(), Is.EqualTo(payment.GetProperty("valor").GetDecimal()));
             Assert.That(charge.GetProperty("moeda").GetString(), Is.EqualTo("BRL"));
             Assert.That(charge.GetProperty("situacao").GetInt32(), Is.EqualTo(1));
-            Assert.That(charge.GetProperty("gatewayPaymentId").GetString(), Is.EqualTo("mock-" + orderId.ToString("D")));
+            Assert.That(charge.GetProperty("gatewayPaymentId").GetString(), Is.EqualTo("ORD-" + orderId.ToString("D")));
             Assert.That(payment.GetProperty("cobrancaId").GetGuid(), Is.EqualTo(chargeId));
             Assert.That(payment.GetProperty("gatewayPaymentId").GetString(), Is.EqualTo(charge.GetProperty("gatewayPaymentId").GetString()));
             Assert.That(payment.GetProperty("etapa").GetInt32(), Is.EqualTo(3));
@@ -257,6 +258,7 @@ public sealed class FluxoDistribuidoSteps
     [Then("as duas APIs convergem para a decisão aceita")]
     public async Task Converged()
     {
+        if (authorized) await Environment.ConfirmPaymentAsync(orderId);
         var expected = authorized ? 4 : 7;
         await Wait(os, $"/api/os/v1/ordens/{orderId}", expected);
         await Wait(execution, $"/api/execution/v1/ordens/{orderId}", expected, nested: true);
@@ -284,7 +286,7 @@ public sealed class FluxoDistribuidoSteps
     [When("reinicio o Billing")]
     public async Task RestartBilling() => await Environment.StartBillingAsync();
     [Then("o pagamento libera a execução")]
-    public async Task PaymentStartsExecution() { await Wait(execution, $"/api/execution/v1/ordens/{orderId}", 4, nested:true); await Wait(os, $"/api/os/v1/ordens/{orderId}",4); }
+    public async Task PaymentStartsExecution() { await Environment.ConfirmPaymentAsync(orderId); await Wait(execution, $"/api/execution/v1/ordens/{orderId}", 4, nested:true); await Wait(os, $"/api/os/v1/ordens/{orderId}",4); }
     [When("recebo uma recusa de pagamento pelo contrato Billing")]
     public async Task RejectPayment() => await Environment.RejectPaymentAsync(orderId);
     [Then("a compensação cancela a ordem preservando a aprovação")]

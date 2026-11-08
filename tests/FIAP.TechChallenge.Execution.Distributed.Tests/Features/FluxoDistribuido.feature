@@ -1,7 +1,7 @@
 # language: pt
 Funcionalidade: Integrar OS, Billing e Execution por Kafka
   As três APIs usam autenticação real, bancos exclusivos e um broker Kafka compartilhado.
-  O gateway de pagamento usa o mock de produção com aprovação imediata.
+  O gateway Mercado Pago usa um servidor HTTP de teste e confirma o pagamento por webhook assinado.
 
   Cenário: Executar uma ordem e projetar sua conclusão no OS
     Dado uma ordem aberta no OS e recebida no Execution
