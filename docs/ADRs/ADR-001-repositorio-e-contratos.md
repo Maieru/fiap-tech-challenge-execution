@@ -2,11 +2,12 @@
 
 - **Status:** Aceita
 - **Data:** 2026-11-01
+- **Última revisão:** 2026-11-14
 - **Escopo:** organização e distribuição
 
 ## Contexto
 
-O Execution tem ciclo de evolução independente do OS e do legado.
+O Execution tem ciclo de evolução independente dos demais serviços.
 
 ## Decisão
 
@@ -17,7 +18,7 @@ O diagnóstico transporta snapshots de serviços e peças, sem entidades ou regr
 
 ## Alternativas consideradas
 
-- Novo projeto dentro do monorepo OS/legado: não atende ao repositório próprio solicitado.
+- Novo projeto no repositório OS: não atende ao repositório próprio solicitado.
 - Kernel de domínio comum: acrescentaria acoplamento desnecessário entre serviços.
 
 ## Consequências

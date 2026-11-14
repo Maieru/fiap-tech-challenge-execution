@@ -126,7 +126,7 @@ public sealed class ExecucaoTests
     }
 
     [Test]
-    public void Finalizar_ShouldAllowOrderWithoutLaborServices_AsInLegacy()
+    public void Finalizar_ShouldAllowOrderWithoutLaborServices()
     {
         var order = Create();
         _ = order.IniciarDiagnostico(Now);
