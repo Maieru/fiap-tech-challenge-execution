@@ -1,12 +1,12 @@
 # FIAP Tech Challenge — Execution
 
-> Operação AWS atual: ciclo completo centralizado em `manage-platform.yml` no repositório principal. RDS gerenciado, MongoDB e Kafka no EKS, segredos e migrations são provisionados pelo fluxo. Execution usa MongoDB 8.0 em replica set com TLS e credencial exclusiva. Instruções antigas de ações manuais/pré-requisitos avulsos abaixo são históricas; seguir o [guia operacional](https://github.com/Maieru/fiap-tech-challenge/blob/main/docs/operacao/plataforma-aws.md). A aplicação remota ainda exige publicação coordenada, transição e bootstrap.
+> A operação AWS usa `manage-platform.yml` no repositório principal. O ciclo provisiona MongoDB e Kafka no EKS, credenciais, observabilidade e workloads; consulte o [guia operacional](https://github.com/Maieru/fiap-tech-challenge/blob/main/docs/operacao/plataforma-aws.md). Publicação e deploy deste repositório são workflows reutilizáveis chamados pelo fluxo central.
 
 Serviço independente de diagnóstico, catálogo, estoque e execução, em .NET 10 com MongoDB próprio e Kafka.
 
 O Execution recebe OrdemServicoCriada, ExecucaoAutorizada e CancelamentoSolicitado por Kafka.
 A API OS publica essas entradas e recebe as cinco confirmações do Execution. Os testes isolados produzem
-mensagens pelo contrato público; Distributed.slnx verifica as duas imagens reais juntas.
+mensagens pelo contrato público; Distributed.slnx verifica as três APIs reais em containers, com provedor de pagamento simulado por HTTP.
 O serviço concentra diagnóstico e execução; clientes, veículos e decisões administrativas pertencem ao OS.
 
 Consulte a
@@ -19,13 +19,20 @@ no repositório principal.
 
 O Compose único para OS, Execution, Billing e dependências fica na raiz do repositório OS (`FiapTechChallengeFase1`). Nessa pasta execute `docker compose up -d --build`. A configuração e o roteiro estão no README do OS. Os três repositórios devem estar lado a lado.
 
+## Pré-requisitos
+
+- .NET SDK 10 para build e testes pelo host; os exemplos usam PowerShell 7.
+- Docker com Compose e containers Linux para MongoDB replica set, Kafka e Testcontainers.
+- Acesso ao NuGet e aos registries das imagens; Node.js 22+ somente para ferramentas de entrega.
+- Portas locais 8082, 27018 e 19093 disponíveis no modo isolado.
+
 ## Dependências e restauração
 
 Versões fixadas: Maieru.FiapTechChallenge.Chassis 1.1.1, Maieru.FiapTechChallenge.Messaging.Kafka 0.1.1
 e FIAP.TechChallenge.OS.Application.Messaging 0.1.0. Os contratos locais do Execution usam ProjectReference dentro deste repositório.
 Não há referências de código-fonte nem acesso aos bancos de outros serviços.
 
-As dependências estão publicadas no NuGet. O restore padrão não exige preparação de pacotes locais:
+O restore padrão usa as versões fixadas do NuGet. Pacotes locais são opcionais para testar candidatos; verifique disponibilidade do feed em um checkout limpo:
 
 ```powershell
 dotnet restore Execution.slnx
@@ -59,9 +66,9 @@ docker compose up --build -d
 | Kafka para processos no host | 127.0.0.1:19093 |
 | Kafka para a API no Compose | kafka:9092 |
 
-O Compose inicializa MongoDB como replica set de um nó e cria os dois tópicos, com uma partição.
+O Compose inicializa MongoDB como replica set de um nó e cria quatro tópicos, com uma partição: OS, Execution, pedidos Billing e resultados Billing.
 MongoDB local não exige credenciais e Kafka usa PLAINTEXT; ambos são expostos somente em loopback neste ambiente de desenvolvimento.
-JWT é exigido nos endpoints administrativos e validado sem chamar o legado.
+JWT é exigido nos endpoints administrativos e validado localmente pela API.
 Issuer e audience usam a seção Jwt de IConfiguration. A chave vem explicitamente da variável Jwt__SigningKey,
 com pelo menos 32 bytes UTF-8; ela é registrada uma única vez na DI e injetada na validação JWT.
 No Compose, JWT_SIGNING_KEY do .env é mapeada para Jwt__SigningKey; não há fallback da chave para arquivo de configuração.
@@ -74,51 +81,48 @@ mantendo o grupo para reprocessar o offset pendente.
 
 Para executar fora do container, configure Mongo__ConnectionString, Mongo__DatabaseName,
 Kafka__BootstrapServers e Jwt__Issuer/Jwt__Audience/Jwt__SigningKey, depois use dotnet run --project src/FIAP.TechChallenge.Execution.API.
-A conexão MongoDB precisa permitir transações. Coleções e índices são criados na inicialização.
+A conexão MongoDB precisa permitir transações. Coleções e índices são criados na inicialização. O processo pelo SDK não carrega o `.env` automaticamente. Configure `ASPNETCORE_ENVIRONMENT=Development` para Scalar e use `--no-launch-profile --urls http://localhost:8082` se quiser manter a porta do Compose. A URI interna `mongo:27017` anuncia o membro do replica set; um processo no host precisa de DNS/URI compatíveis, por exemplo a conexão loopback com `directConnection=true` indicada na tabela.
 
-## Executar as duas APIs e BDD
+## Executar as três APIs e BDD
 
-Na raiz do repositório principal, construa a imagem OS com as dependências públicas:
+Mantenha OS, Billing e Execution lado a lado. Na raiz do Execution, construa as imagens prontas dos outros serviços:
 
 ```powershell
-docker build -f src/Services/OrdensServico/Dockerfile -t fiap-os:local .
+docker build -t fiap-os:local ../FiapTechChallengeFase1
+docker build -t fiap-billing:local ../FiapTechChallengeBilling
+docker build -t fiap-execution:local .
 ```
 
-Na raiz deste repositório, preencha também OS_DB_PASSWORD no .env, mantendo JWT igual nas duas APIs:
+No .env do Execution, preencha OS_DB_PASSWORD, BILLING_DB_PASSWORD e JWT compartilhado. Para cobranças positivas, informe também MERCADO_PAGO_ACCESS_TOKEN e MERCADO_PAGO_WEBHOOK_SECRET de teste. A criação de checkout não confirma pagamento; é necessário webhook válido e URL HTTPS acessível ao provedor.
 
 ```powershell
 docker compose -f compose.yaml -f compose.integrated.yaml up --build -d
-# OS: localhost:8081; Execution: localhost:8082; Kafka compartilhado: localhost:19093
+docker compose -f compose.yaml -f compose.integrated.yaml ps -a
 docker compose -f compose.yaml -f compose.integrated.yaml down
+```
 
-docker build -t fiap-execution:local .
+OS atende 8081, Execution 8082, Billing 8083 e o broker compartilhado 19093. Esse modo não inclui frontend; use o Compose do OS para a interface completa. Os três bancos e o Kafka têm volumes próprios; down os preserva. Não use -v se precisar dos dados, nem execute ao mesmo tempo outro Compose que dispute essas portas.
+
+A suíte distribuída não depende desse ambiente ligado. Ela cria rede, bancos e broker descartáveis, usa JWT obtido pelo login real do OS e simula Mercado Pago por servidor HTTP/webhook assinado:
+
+```powershell
 $env:OS_TEST_IMAGE = 'fiap-os:local'
 $env:EXECUTION_TEST_IMAGE = 'fiap-execution:local'
 $env:BILLING_TEST_IMAGE = 'fiap-billing:local'
 dotnet test Distributed.slnx -c Release --logger trx --results-directory artifacts/distributed
 ```
 
-O Compose integrado recebe OS_IMAGE como imagem pronta, mantém bancos/volumes exclusivos e compartilha somente Kafka.
-Não use o Compose independente do OS ao mesmo tempo: ele tem outro broker e usa a mesma porta HTTP.
-Down preserva os três volumes; não use -v para manter dados locais.
+Os nove cenários cobrem conclusão, cancelamento e replay, decisões concorrentes, retomada de consumidores, espera e recusa de pagamento, JWT e acesso privado/entrega. O cenário de recusa usa um responder Kafka de contrato enquanto Billing está parado; não comprova compra externa ou recusa real no provedor.
 
-O BDD usa Testcontainers com rede/volumes descartáveis, portas aleatórias e JWT real.
-Não exige os Composes de desenvolvimento ligados nem referências a projetos das APIs.
-Os quatro cenários verificam conclusão, cancelamento/replay, decisões concorrentes e retomada do Execution,
-incluindo histórico, estoque, snapshots e correlação/causação/trace.
-O workflow manual distributed.yml aceita imagens publicadas acessíveis ao runner. Prefira referências por digest.
-Os pipelines de cada serviço continuam independentes. O BDD distribuído fica separado da solução padrão e da sua validação automática.
+O workflow manual distributed.yml recebe as três imagens publicadas acessíveis ao runner; prefira referências imutáveis por digest. A suíte é separada de Execution.slnx e do CI padrão do serviço.
 
-O padrão e as decisões da integração ficam no repositório principal:
-[ADR-016](https://github.com/Maieru/fiap-tech-challenge/blob/main/docs/ADRs/ADR-016-integracao-os-execution.md),
-[RFC-009](https://github.com/Maieru/fiap-tech-challenge/blob/main/docs/RFCs/RFC-009-integracao-os-execution.md)
-e [ADR-015](https://github.com/Maieru/fiap-tech-challenge/blob/main/docs/ADRs/ADR-015-execution-mongodb.md).
+Decisões: [integração OS/Execution](https://github.com/Maieru/fiap-tech-challenge/blob/main/docs/ADRs/ADR-016-integracao-os-execution.md) e [MongoDB próprio](docs/ADRs/ADR-003-mongodb-eks.md).
 
 ## Kubernetes / EKS
 
-As Actions manuais [publish-image.yml e deploy-eks.yml](scripts/delivery/README.md) publicam no ECR e aplicam os manifestos no EKS, em main com CI aprovado. A publicação usa tag por commit e o deploy usa digest; configure as roles OIDC e variáveis conforme o guia.
+O fluxo central chama [publish-image.yml e deploy-eks.yml](scripts/delivery/README.md), reutilizáveis e sem disparo manual independente. Publicação exige CI aprovado em main e usa tag por commit; deploy confere o digest e o SHA de origem, sincroniza ExternalSecrets e acompanha rollout.
 
-Os [manifestos e o roteiro manual](k8s/README.md) configuram HTTP interno 8080, HPA de 1 a 3 réplicas, credencial MongoDB exclusiva e OTLP ativo para o Collector compartilhado. Namespace/SecretStore pertencem ao Infra. Bancos, Kafka, segredos/IAM, imagens e deploy são etapas externas; não há implantação automática nesta entrega.
+Os [manifestos](k8s/README.md) usam HTTP interno 8080, HPA de 1 a 3 réplicas, MongoDB 8.0 em replica set com TLS e credencial exclusiva, CA em `/certs/ca.pem` e OTLP para o Collector. Namespace/SecretStore, banco e Kafka são criados pelos estágios Infra/DB. O Job de compatibilidade `--verify-persistence` testa o banco antes do rollout. Não aplique placeholders diretamente.
 
 ## API
 
@@ -153,7 +157,7 @@ Serviços e peças só entram durante diagnóstico; a inclusão da peça e sua b
 Alterações/inativação do catálogo preservam os snapshots da ordem.
 Cancelar enquanto aguarda aprovação devolve estoque uma única vez, inclusive para peças inativadas.
 Concluir serviço exige tempo positivo; finalizar exige todos os serviços concluídos.
-O tempo médio usa os itens de serviço efetivamente concluídos, conforme a regra extraída do legado.
+O tempo médio usa os itens de serviço efetivamente concluídos.
 
 ## Mensageria e transação
 
@@ -175,7 +179,6 @@ dotnet test Execution.slnx -c Release --no-restore --filter 'TestCategory!=Conta
 
 docker build -t fiap-execution:local .
 $env:EXECUTION_TEST_IMAGE = 'fiap-execution:local'
-$env:BILLING_TEST_IMAGE = 'fiap-billing:local'
 $env:EXECUTION_OPENAPI_OUTPUT = (Join-Path (Get-Location) 'artifacts/execution-openapi.json')
 dotnet test tests/FIAP.TechChallenge.Execution.Integration.Tests -c Release --filter 'TestCategory=ContainerImage'
 ```
@@ -191,16 +194,25 @@ Os resultados das verificações estão nas evidências de validação do reposi
 
 ## Publicação dos contratos
 
-O pacote de contratos Execution.Application.Messaging está publicado no NuGet na versão 0.1.0.
+O projeto de contratos declara `FIAP.TechChallenge.Execution.Application.Messaging` 0.1.0. A versão do envelope é 1, independente da versão NuGet. Verifique a disponibilidade no feed antes de atualizar consumidores.
 O workflow publish-messaging.yml usa tag messaging-vX.Y.Z em commit revisado de main, variável NUGET_USER e NuGet Trusted Publishing.
 O pacote contém somente contratos, sem MongoDB/Kafka/domínio.
 
 ## Billing integrado
 
-O Compose integrado também inclui Billing em 8083 e PostgreSQL exclusivo. Forneça BILLING_DB_PASSWORD e BILLING_IMAGE, além das imagens OS/Execution. Aprovação administrativa agora solicita pagamento; somente PagamentoConfirmado autoriza Execution. Contratos Execution permanecem v1. A suíte Distributed exige as três imagens. O cenário de recusa usa um responder Kafka de teste no lugar do Billing parado; a implementação real de recusa é validada separadamente com IPaymentGateway substituto e banco/broker reais no Billing.
+O Compose integrado também inclui Billing em 8083 e PostgreSQL exclusivo. Forneça BILLING_DB_PASSWORD e BILLING_IMAGE, além das imagens OS/Execution. Aprovação administrativa agora solicita pagamento; somente PagamentoConfirmado autoriza Execution. Contratos Execution permanecem v1. A suíte Distributed exige as três imagens. O cenário de recusa usa um responder Kafka de teste no lugar do Billing parado; a integração do gateway é validada separadamente com servidor HTTP de teste, banco e broker reais no Billing.
 
 O cenário de conclusão consulta diretamente OS, Billing e Execution, compara o orçamento/cobrança/valor, verifica estoque e reentrega pedido de pagamento, confirmação e autorização. Ao terminar, grava as respostas das três APIs em um JSON anexado pelo NUnit ao resultado; o caminho é mostrado no log. O workflow distribuído coleta os JSONs, além do TRX. Consulte o relatório de validação ponta a ponta no repositório principal para evidências e limites.
 
 ## JWT emitido pelo OS
 
 O login administrativo agora é `POST /api/os/v1/usuarios/login` no OS. Execution permanece somente validador, com issuer/audience/chave iguais aos do OS. O BDD cadastra um usuário e obtém o token pelo login real, depois o utiliza nas três APIs; um cenário adicional verifica rejeição sem JWT ou com JWT inválido.
+
+## Organização e diagnóstico
+
+- src contém API, Application, Domain, Infrastructure e Application.Messaging. tests separa domínio, aplicação, contratos, integração e BDD distribuído.
+- API não inicia: confira JWT com 32 bytes UTF-8, eleição do primário MongoDB e tópicos Kafka. Use docker compose ps -a e docker compose logs api mongo kafka.
+- MongoDB rejeita transação: confira replica set, primário, DNS anunciado e, na AWS, CA/TLS.
+- Uma ordem 404 logo após abertura pode ser projeção pendente; falha persistente exige conferir eventos e o consumidor.
+- Host encerrado após erro Kafka: corrija a causa e reinicie no mesmo grupo; não apague offsets para esconder a mensagem problemática.
+- Porta ocupada: encerre a stack que usa a mesma porta ou configure um ambiente isolado.
